@@ -7,7 +7,7 @@ streamlit>=1.41,<2
 google-genai>=1.0,<2
 reportlab>=4.0,<5
 pypdf>=5.0,<7
-cryptography>=48.0.1,<49
+cryptography>=49.0.0,<50
 pyotp>=2.9,<3
 qrcode[pil]>=8,<9
 pytest
