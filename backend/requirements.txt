@@ -8,7 +8,7 @@ google-genai>=1.0,<2
 reportlab>=4.0,<5
 pypdf>=5.0,<7
 cryptography>=48.0.1,<49
-pyotp>=2.9,<3
+pyotp>=2.10.0,<3
 qrcode[pil]>=8,<9
 pytest
 pytest-asyncio
