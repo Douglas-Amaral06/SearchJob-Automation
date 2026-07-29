@@ -3,16 +3,45 @@ from app.config import ADZUNA_APP_ID, ADZUNA_APP_KEY
 from app.utils.pcd import vaga_eh_pcd
 
 
-def normalizar_modalidade(texto: str, modalidade_padrao: str) -> str:
+def normalizar_modalidade(texto: str, modalidade_padrao: str | None = None) -> str:
     texto_lower = (texto or "").lower()
-
-    if "remoto" in texto_lower or "home office" in texto_lower:
-        return "Remoto"
 
     if "híbrido" in texto_lower or "hibrido" in texto_lower:
         return "Híbrido"
 
-    return modalidade_padrao
+    if (
+        "remot" in texto_lower
+        or "home office" in texto_lower
+        or "home-office" in texto_lower
+    ):
+        return "Remoto"
+
+    if (
+        "presencial" in texto_lower
+        or "on-site" in texto_lower
+        or "onsite" in texto_lower
+    ):
+        return "Presencial"
+
+    return modalidade_padrao or "Não informada"
+
+
+def modalidade_adzuna_compativel(
+    texto_vaga: str,
+    modalidade_busca: str,
+) -> tuple[bool, str]:
+    """Aplica modalidade estrita sem classificar vagas desconhecidas como remotas."""
+    detectada = normalizar_modalidade(texto_vaga)
+
+    if modalidade_busca in {"Remoto", "Híbrido"}:
+        return detectada == modalidade_busca, detectada
+
+    if modalidade_busca == "Presencial":
+        if detectada in {"Remoto", "Híbrido"}:
+            return False, detectada
+        return True, "Presencial"
+
+    return True, detectada
 
 
 async def buscar_vagas_adzuna(
@@ -51,6 +80,13 @@ async def buscar_vagas_adzuna(
             descricao = item.get("description", "")
             texto_vaga = f"{titulo} {descricao}"
 
+            modalidade_compativel, modalidade_vaga = modalidade_adzuna_compativel(
+                texto_vaga,
+                modalidade,
+            )
+            if not modalidade_compativel:
+                continue
+
             eh_pcd = vaga_eh_pcd(texto_vaga)
 
             if eh_pcd and not incluir_pcd:
@@ -68,7 +104,7 @@ async def buscar_vagas_adzuna(
                 "titulo": titulo,
                 "empresa": empresa,
                 "local": local,
-                "modalidade": normalizar_modalidade(texto_vaga, modalidade),
+                "modalidade": modalidade_vaga,
                 "url_candidatura": url_candidatura,
                 "data_publicacao": item.get("created"),
                 "candidatura_simplificada": False,
