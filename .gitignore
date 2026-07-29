@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Variáveis e credenciais
+.env
+.env.*
+!.env.example
+!**/.env.example
+.env.local
+backend/.env
+.streamlit/secrets.toml
+**/secrets.toml
+**/credentials.toml
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.crt
+*.cer
+*.der
+
+# Banco local
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+data/
+backend/data/
+
+# Dados, exportações e logs
+*.log
+logs/
+exports/
+backups/
+*.bak
+*.dump
+*.sql
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Playwright
+test-results/
+playwright-report/
+
+# Cobertura, cache e temporários
+.coverage
+coverage.xml
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+.cache/
+tmp/
+temp/

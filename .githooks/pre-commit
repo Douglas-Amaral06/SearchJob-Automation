@@ -1,0 +1,2 @@
+#!/bin/sh
+python scripts/pre_publish_check.py
