@@ -56,6 +56,10 @@ def carregar_secrets_no_ambiente() -> None:
         "GREENHOUSE_ENABLED",
         "GREENHOUSE_BOARD_TOKENS",
         "GREENHOUSE_CACHE_TTL_SECONDS",
+        "JOBICY_ENABLED",
+        "JOBICY_CACHE_TTL_SECONDS",
+        "REMOTIVE_ENABLED",
+        "REMOTIVE_CACHE_TTL_SECONDS",
         "DATABASE_PATH",
         "GEMINI_API_KEY",
         "APP_ENCRYPTION_KEY",
@@ -688,7 +692,7 @@ def renderizar_login() -> None:
                     st.error(resultado_magic.get("mensagem", "Link inválido."))
 
     entrar, cadastrar, link_magico = st.tabs(
-        ["Entrar", "Criar conta", "Link mágico"]
+        ["Entrar", "Criar conta", "Entrar pelo EMAIL"]
     )
 
     with entrar:

@@ -2,11 +2,20 @@ import asyncio
 import unicodedata
 from collections.abc import Awaitable
 
-from app.config import GUPY_ENABLED, JOOBLE_ENABLED, GREENHOUSE_ENABLED, GREENHOUSE_BOARD_TOKENS
+from app.config import (
+    GREENHOUSE_BOARD_TOKENS,
+    GREENHOUSE_ENABLED,
+    GUPY_ENABLED,
+    JOBICY_ENABLED,
+    JOOBLE_ENABLED,
+    REMOTIVE_ENABLED,
+)
 from app.services.adzuna_service import buscar_vagas_adzuna
 from app.services.gupy_service import buscar_vagas_gupy
 from app.services.jooble_service import buscar_vagas_jooble
 from app.services.greenhouse_service import buscar_vagas_greenhouse
+from app.services.jobicy_service import buscar_vagas_jobicy
+from app.services.remotive_service import buscar_vagas_remotive
 from app.utils.deduplicador import remover_vagas_duplicadas
 
 
@@ -100,6 +109,32 @@ async def buscar_vagas_agregadas(
                 max_dias=max_dias,
                 incluir_pcd=incluir_pcd,
                 boards=GREENHOUSE_BOARD_TOKENS,
+            )
+        )
+
+    if JOBICY_ENABLED:
+        buscas.append(
+            buscar_vagas_jobicy(
+                cargo=cargo,
+                cidade=cidade_consulta,
+                estado=estado,
+                modalidade=modalidade,
+                pagina=pagina,
+                max_dias=max_dias,
+                incluir_pcd=incluir_pcd,
+            )
+        )
+
+    if REMOTIVE_ENABLED:
+        buscas.append(
+            buscar_vagas_remotive(
+                cargo=cargo,
+                cidade=cidade_consulta,
+                estado=estado,
+                modalidade=modalidade,
+                pagina=pagina,
+                max_dias=max_dias,
+                incluir_pcd=incluir_pcd,
             )
         )
 

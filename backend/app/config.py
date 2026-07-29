@@ -48,6 +48,18 @@ def parse_greenhouse_boards() -> list[str]:
 
 GREENHOUSE_BOARD_TOKENS = parse_greenhouse_boards()
 
+# Fontes públicas de vagas remotas. O cache evita exceder o uso justo das APIs.
+JOBICY_ENABLED = ler_booleano("JOBICY_ENABLED", True)
+JOBICY_CACHE_TTL_SECONDS = max(
+    3600,
+    int(os.getenv("JOBICY_CACHE_TTL_SECONDS", "3600")),
+)
+REMOTIVE_ENABLED = ler_booleano("REMOTIVE_ENABLED", True)
+REMOTIVE_CACHE_TTL_SECONDS = max(
+    3600,
+    int(os.getenv("REMOTIVE_CACHE_TTL_SECONDS", "21600")),
+)
+
 # DATABASE
 DATABASE_PATH_STR = os.getenv("DATABASE_PATH", "data/search_emprego.db")
 # Resolver caminho absoluto baseado no diretório do backend
