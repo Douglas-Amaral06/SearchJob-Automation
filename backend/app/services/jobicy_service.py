@@ -48,7 +48,7 @@ async def _obter_feed() -> list[dict[str, Any]]:
             async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
                 resposta = await client.get(
                     API_URL,
-                    params={"count": 100},
+                    params={"count": 100, "geo": "brazil"},
                     headers={"User-Agent": "SearchEmprego/1.0"},
                 )
                 resposta.raise_for_status()

@@ -47,6 +47,25 @@ Git.
 
 Não faça commit de `.env` nem de `.streamlit/secrets.toml`.
 
+## Fontes de vagas
+
+O agregador suporta Adzuna, Gupy, Jooble, Greenhouse, Jobicy e Remotive.
+Jobicy e Remotive usam APIs públicas sem credenciais e retornam vagas remotas
+compatíveis com candidatos no Brasil. Ambas ficam habilitadas por padrão.
+
+Para desativá-las ou ajustar o cache no Streamlit Community Cloud:
+
+```toml
+JOBICY_ENABLED = "true"
+JOBICY_CACHE_TTL_SECONDS = "3600"
+REMOTIVE_ENABLED = "true"
+REMOTIVE_CACHE_TTL_SECONDS = "21600"
+```
+
+Não reduza os tempos de cache: eles respeitam o uso justo das APIs e evitam
+bloqueio temporário do aplicativo. Os links de candidatura continuam
+direcionando para a página original da fonte.
+
 ## Checklist obrigatório antes do GitHub
 
 Execute na raiz:

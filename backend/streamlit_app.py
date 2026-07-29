@@ -1522,7 +1522,7 @@ with aba_curriculo:
             use_container_width=True,
         )
         gerar_com_ia = acoes_curriculo[1].form_submit_button(
-            "Gerar currículo com Gemini",
+            "Gerar currículo com IA",
             type="primary",
             use_container_width=True,
         )
