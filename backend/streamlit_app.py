@@ -15,6 +15,7 @@ import re
 import sys
 import unicodedata
 from datetime import datetime
+from inspect import signature
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -1008,6 +1009,29 @@ def _data_admin(valor: str | None) -> str:
         return "Não informado"
 
 
+def _executar_funcao_admin_segura(funcao, **argumentos) -> dict[str, Any]:
+    """Impede que um módulo antigo em cache derrube o painel após o deploy."""
+    try:
+        if "session_token" not in signature(funcao).parameters:
+            return {
+                "status": "erro",
+                "mensagem": (
+                    "O painel administrativo foi atualizado. Reinicie o "
+                    "aplicativo para carregar a versão segura."
+                ),
+            }
+        return funcao(**argumentos)
+    except TypeError:
+        logger.exception("Versões administrativas incompatíveis durante o deploy")
+        return {
+            "status": "erro",
+            "mensagem": (
+                "O painel administrativo está sendo atualizado. Reinicie o "
+                "aplicativo e tente novamente."
+            ),
+        }
+
+
 def renderizar_painel_admin() -> None:
     usuario_admin = st.session_state.usuario
     sessao_admin = validar_sessao(st.session_state.session_token)
@@ -1054,7 +1078,8 @@ def renderizar_painel_admin() -> None:
         st.session_state.pagina_admin = 1
         st.session_state["admin-filtro-anterior"] = filtro_atual
 
-    resultado = listar_usuarios_admin(
+    resultado = _executar_funcao_admin_segura(
+        listar_usuarios_admin,
         administrador_id=usuario_admin["id"],
         busca=busca,
         status=status,
@@ -1139,7 +1164,8 @@ def renderizar_painel_admin() -> None:
                         use_container_width=True,
                     )
                 if confirmar:
-                    alteracao = definir_banimento_usuario(
+                    alteracao = _executar_funcao_admin_segura(
+                        definir_banimento_usuario,
                         administrador_id=usuario_admin["id"],
                         usuario_id=item["id"],
                         banir=not banido,
