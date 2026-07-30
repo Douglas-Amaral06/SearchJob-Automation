@@ -109,6 +109,10 @@ from app.services.gemini_resume_service import (  # noqa: E402
     gemini_configurado,
     gerar_curriculo_com_ia,
 )
+from app.admin_compat import (  # noqa: E402
+    definir_banimento_usuario,
+    listar_usuarios_admin,
+)
 from app.user_resume import (  # noqa: E402
     alterar_senha_usuario,
     autenticar_usuario,
@@ -120,8 +124,6 @@ from app.user_resume import (  # noqa: E402
     consumir_magic_link,
     criar_admin_inicial,
     criar_usuario,
-    definir_banimento_usuario,
-    listar_usuarios_admin,
     obter_curriculo,
     preparar_2fa_admin,
     preparar_2fa_admin_por_desafio,
