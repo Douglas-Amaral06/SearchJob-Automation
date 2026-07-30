@@ -25,3 +25,18 @@ def test_admin_compat_nao_quebra_import_se_deploy_estiver_dessincronizado(
     assert listagem["status"] == "erro"
     assert alteracao["status"] == "erro"
     assert "temporariamente indisponível" in listagem["mensagem"]
+
+
+def test_admin_compat_recusa_implementacao_antiga_sem_token(monkeypatch):
+    monkeypatch.setattr(
+        admin_compat.user_resume,
+        "listar_usuarios_admin",
+        lambda administrador_id: {"status": "sucesso"},
+    )
+
+    resultado = admin_compat.listar_usuarios_admin(
+        1,
+        session_token="token-invalido",
+    )
+
+    assert resultado["status"] == "erro"

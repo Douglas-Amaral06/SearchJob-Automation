@@ -416,6 +416,34 @@ def test_usuario_comum_nao_acessa_gestao(banco_seguranca):
     assert resultado["mensagem"] == "Operação não autorizada."
 
 
+def test_painel_admin_exige_sessao_ativa_do_proprio_admin(banco_seguranca):
+    acesso_admin, _ = criar_admin_com_2fa()
+    admin_id = acesso_admin["usuario"]["id"]
+    criar_usuario("Ana Silva", "ana@example.com", SENHA_FORTE)
+    acesso_usuario = autenticar_usuario("ana@example.com", SENHA_FORTE)
+
+    sem_token = listar_usuarios_admin(admin_id)
+    token_de_outro_usuario = listar_usuarios_admin(
+        admin_id,
+        session_token=acesso_usuario["session_token"],
+    )
+    acesso_valido = listar_usuarios_admin(
+        admin_id,
+        session_token=acesso_admin["session_token"],
+    )
+
+    assert sem_token["status"] == "erro"
+    assert token_de_outro_usuario["status"] == "erro"
+    assert acesso_valido["status"] == "sucesso"
+
+    revogar_sessao(acesso_admin["session_token"])
+    sessao_revogada = listar_usuarios_admin(
+        admin_id,
+        session_token=acesso_admin["session_token"],
+    )
+    assert sessao_revogada["status"] == "erro"
+
+
 def test_banimento_revoga_acessos_e_bloqueia_novo_cadastro(
     banco_seguranca,
     monkeypatch,
@@ -449,6 +477,7 @@ def test_banimento_revoga_acessos_e_bloqueia_novo_cadastro(
         banir=True,
         motivo="Violação das regras de uso.",
         codigo_2fa=totp.now(),
+        session_token=acesso_admin["session_token"],
     )
     assert resultado["status"] == "sucesso"
     assert validar_sessao(token_usuario) is None
@@ -472,6 +501,7 @@ def test_banimento_revoga_acessos_e_bloqueia_novo_cadastro(
     listagem = listar_usuarios_admin(
         acesso_admin["usuario"]["id"],
         status="banidos",
+        session_token=acesso_admin["session_token"],
     )
     assert listagem["status"] == "sucesso"
     assert listagem["metricas"]["banidos"] == 1
@@ -498,6 +528,7 @@ def test_desbanimento_restaura_login_e_mantem_auditoria(banco_seguranca):
         True,
         "Conta usada de forma irregular.",
         totp.now(),
+        acesso_admin["session_token"],
     )["status"] == "sucesso"
     assert definir_banimento_usuario(
         admin_id,
@@ -505,10 +536,14 @@ def test_desbanimento_restaura_login_e_mantem_auditoria(banco_seguranca):
         False,
         "Revisão concluída pelo administrador.",
         totp.now(),
+        acesso_admin["session_token"],
     )["status"] == "sucesso"
 
     assert autenticar_usuario("ana@example.com", SENHA_FORTE)["status"] == "sucesso"
-    listagem = listar_usuarios_admin(admin_id)
+    listagem = listar_usuarios_admin(
+        admin_id,
+        session_token=acesso_admin["session_token"],
+    )
     assert [evento["acao"] for evento in listagem["auditoria"][:2]] == [
         "desbanir",
         "banir",
@@ -532,6 +567,7 @@ def test_banimento_exige_2fa_valido_e_nao_aceita_admin(
         True,
         "Motivo administrativo válido.",
         "000000",
+        acesso_admin["session_token"],
     )
     assert invalido["status"] == "erro"
     assert autenticar_usuario("ana@example.com", SENHA_FORTE)["status"] == "sucesso"
@@ -542,5 +578,6 @@ def test_banimento_exige_2fa_valido_e_nao_aceita_admin(
         True,
         "Tentativa de bloquear administrador.",
         totp.now(),
+        acesso_admin["session_token"],
     )
     assert contra_admin["status"] == "erro"

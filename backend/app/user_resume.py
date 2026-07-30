@@ -1379,7 +1379,19 @@ def consumir_magic_link(token: str, codigo_2fa: str = "") -> dict[str, Any]:
         conexao.close()
 
 
-def _administrador_para_gestao(administrador_id: int) -> Any | None:
+def _administrador_para_gestao(
+    administrador_id: int,
+    session_token: str | None,
+) -> Any | None:
+    sessao = validar_sessao(session_token)
+    if (
+        not sessao
+        or sessao.get("id") != administrador_id
+        or sessao.get("papel") != "admin"
+        or not sessao.get("totp_habilitado")
+    ):
+        return None
+
     conexao = criar_conexao()
     try:
         return conexao.execute(
@@ -1402,9 +1414,10 @@ def listar_usuarios_admin(
     status: str = "todos",
     pagina: int = 1,
     limite: int = 25,
+    session_token: str | None = None,
 ) -> dict[str, Any]:
     """Lista somente dados administrativos seguros, nunca hashes ou segredos."""
-    administrador = _administrador_para_gestao(administrador_id)
+    administrador = _administrador_para_gestao(administrador_id, session_token)
     if (
         not administrador
         or administrador["papel"] != "admin"
@@ -1528,9 +1541,10 @@ def definir_banimento_usuario(
     banir: bool,
     motivo: str,
     codigo_2fa: str,
+    session_token: str | None = None,
 ) -> dict[str, Any]:
     """Bane/desbane com reautenticação TOTP, auditoria e revogação de sessão."""
-    administrador = _administrador_para_gestao(administrador_id)
+    administrador = _administrador_para_gestao(administrador_id, session_token)
     if (
         not administrador
         or administrador["papel"] != "admin"

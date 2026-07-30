@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from inspect import signature
 from typing import Any
 
 from app import user_resume
@@ -13,15 +14,28 @@ MENSAGEM_INDISPONIVEL = (
 )
 
 
+def _obter_funcao_segura(nome: str):
+    funcao = getattr(user_resume, nome, None)
+    if not callable(funcao):
+        return None
+    try:
+        if "session_token" not in signature(funcao).parameters:
+            return None
+    except (TypeError, ValueError):
+        return None
+    return funcao
+
+
 def listar_usuarios_admin(
     administrador_id: int,
     busca: str = "",
     status: str = "todos",
     pagina: int = 1,
     limite: int = 25,
+    session_token: str | None = None,
 ) -> dict[str, Any]:
-    funcao = getattr(user_resume, "listar_usuarios_admin", None)
-    if not callable(funcao):
+    funcao = _obter_funcao_segura("listar_usuarios_admin")
+    if funcao is None:
         return {"status": "erro", "mensagem": MENSAGEM_INDISPONIVEL}
     return funcao(
         administrador_id=administrador_id,
@@ -29,6 +43,7 @@ def listar_usuarios_admin(
         status=status,
         pagina=pagina,
         limite=limite,
+        session_token=session_token,
     )
 
 
@@ -38,9 +53,10 @@ def definir_banimento_usuario(
     banir: bool,
     motivo: str,
     codigo_2fa: str,
+    session_token: str | None = None,
 ) -> dict[str, Any]:
-    funcao = getattr(user_resume, "definir_banimento_usuario", None)
-    if not callable(funcao):
+    funcao = _obter_funcao_segura("definir_banimento_usuario")
+    if funcao is None:
         return {"status": "erro", "mensagem": MENSAGEM_INDISPONIVEL}
     return funcao(
         administrador_id=administrador_id,
@@ -48,4 +64,5 @@ def definir_banimento_usuario(
         banir=banir,
         motivo=motivo,
         codigo_2fa=codigo_2fa,
+        session_token=session_token,
     )

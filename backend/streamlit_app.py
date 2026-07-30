@@ -1010,8 +1010,13 @@ def _data_admin(valor: str | None) -> str:
 
 def renderizar_painel_admin() -> None:
     usuario_admin = st.session_state.usuario
+    sessao_admin = validar_sessao(st.session_state.session_token)
     if (
-        usuario_admin.get("papel") != "admin"
+        not sessao_admin
+        or sessao_admin.get("id") != usuario_admin.get("id")
+        or sessao_admin.get("papel") != "admin"
+        or not sessao_admin.get("totp_habilitado")
+        or usuario_admin.get("papel") != "admin"
         or not usuario_admin.get("totp_habilitado")
     ):
         st.error("Painel administrativo indisponível.")
@@ -1055,6 +1060,7 @@ def renderizar_painel_admin() -> None:
         status=status,
         pagina=st.session_state.pagina_admin,
         limite=20,
+        session_token=st.session_state.session_token,
     )
     if resultado.get("status") != "sucesso":
         st.error(resultado.get("mensagem", "Não foi possível carregar os usuários."))
@@ -1139,6 +1145,7 @@ def renderizar_painel_admin() -> None:
                         banir=not banido,
                         motivo=motivo,
                         codigo_2fa=codigo_2fa,
+                        session_token=st.session_state.session_token,
                     )
                     if alteracao.get("status") == "sucesso":
                         st.success(alteracao["mensagem"])
