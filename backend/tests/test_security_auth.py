@@ -16,6 +16,8 @@ from app.user_resume import (
     consumir_magic_link,
     criar_admin_inicial,
     criar_usuario,
+    definir_banimento_usuario,
+    listar_usuarios_admin,
     preparar_2fa_admin,
     preparar_2fa_admin_por_desafio,
     revogar_sessao,
@@ -37,6 +39,23 @@ def banco_seguranca(tmp_path: Path, monkeypatch):
         with mock.patch("app.database.DATABASE_DIR", banco.parent):
             inicializar_banco()
             yield
+
+
+def criar_admin_com_2fa() -> tuple[dict, pyotp.TOTP]:
+    login_admin = "ADMIN_GESTAO"
+    senha_admin = "Senha-AdminSegura789"
+    assert criar_admin_inicial(login_admin, senha_admin)["status"] == "sucesso"
+    primeira_etapa = autenticar_usuario(login_admin, senha_admin)
+    configuracao = preparar_2fa_admin_por_desafio(
+        primeira_etapa["desafio_token"]
+    )
+    totp = pyotp.TOTP(configuracao["segredo"])
+    acesso = confirmar_2fa_admin_por_desafio(
+        primeira_etapa["desafio_token"],
+        totp.now(),
+    )
+    assert acesso["status"] == "sucesso"
+    return acesso, totp
 
 
 def test_senha_eh_hash_com_salt_unico(banco_seguranca):
@@ -384,3 +403,144 @@ def test_admin_oculta_2fa_ate_senha_correta(banco_seguranca):
     assert registro["senha_hash"] != senha_admin
     assert registro["senha_salt"]
     assert registro["papel"] == "admin"
+
+
+def test_usuario_comum_nao_acessa_gestao(banco_seguranca):
+    usuario = criar_usuario(
+        "Ana Silva",
+        "ana@example.com",
+        SENHA_FORTE,
+    )["usuario"]
+    resultado = listar_usuarios_admin(usuario["id"])
+    assert resultado["status"] == "erro"
+    assert resultado["mensagem"] == "Operação não autorizada."
+
+
+def test_banimento_revoga_acessos_e_bloqueia_novo_cadastro(
+    banco_seguranca,
+    monkeypatch,
+):
+    acesso_admin, totp = criar_admin_com_2fa()
+    usuario = criar_usuario(
+        "Ana Silva",
+        "ana@example.com",
+        SENHA_FORTE,
+    )["usuario"]
+    login_usuario = autenticar_usuario("ana@example.com", SENHA_FORTE)
+    token_usuario = login_usuario["session_token"]
+
+    monkeypatch.setattr("app.user_resume._enviar_magic_link", lambda *_: True)
+    assert solicitar_magic_link("ana@example.com")["enviado"] is True
+    conexao = criar_conexao()
+    try:
+        magic_hash = conexao.execute(
+            """
+            SELECT token_hash FROM magic_links
+            WHERE usuario_id = ? AND usado_em IS NULL
+            """,
+            (usuario["id"],),
+        ).fetchone()["token_hash"]
+    finally:
+        conexao.close()
+
+    resultado = definir_banimento_usuario(
+        administrador_id=acesso_admin["usuario"]["id"],
+        usuario_id=usuario["id"],
+        banir=True,
+        motivo="Violação das regras de uso.",
+        codigo_2fa=totp.now(),
+    )
+    assert resultado["status"] == "sucesso"
+    assert validar_sessao(token_usuario) is None
+    assert autenticar_usuario("ana@example.com", SENHA_FORTE)["status"] == "erro"
+    assert criar_usuario(
+        "Outra pessoa",
+        "ANA@EXAMPLE.COM",
+        SENHA_FORTE,
+    )["status"] == "erro"
+
+    conexao = criar_conexao()
+    try:
+        magic = conexao.execute(
+            "SELECT usado_em FROM magic_links WHERE token_hash = ?",
+            (magic_hash,),
+        ).fetchone()
+    finally:
+        conexao.close()
+    assert magic["usado_em"] is not None
+
+    listagem = listar_usuarios_admin(
+        acesso_admin["usuario"]["id"],
+        status="banidos",
+    )
+    assert listagem["status"] == "sucesso"
+    assert listagem["metricas"]["banidos"] == 1
+    assert [item["email"] for item in listagem["usuarios"]] == [
+        "ana@example.com"
+    ]
+    assert "senha_hash" not in listagem["usuarios"][0]
+    assert "senha_salt" not in listagem["usuarios"][0]
+    assert "totp_segredo_criptografado" not in listagem["usuarios"][0]
+
+
+def test_desbanimento_restaura_login_e_mantem_auditoria(banco_seguranca):
+    acesso_admin, totp = criar_admin_com_2fa()
+    usuario = criar_usuario(
+        "Ana Silva",
+        "ana@example.com",
+        SENHA_FORTE,
+    )["usuario"]
+    admin_id = acesso_admin["usuario"]["id"]
+
+    assert definir_banimento_usuario(
+        admin_id,
+        usuario["id"],
+        True,
+        "Conta usada de forma irregular.",
+        totp.now(),
+    )["status"] == "sucesso"
+    assert definir_banimento_usuario(
+        admin_id,
+        usuario["id"],
+        False,
+        "Revisão concluída pelo administrador.",
+        totp.now(),
+    )["status"] == "sucesso"
+
+    assert autenticar_usuario("ana@example.com", SENHA_FORTE)["status"] == "sucesso"
+    listagem = listar_usuarios_admin(admin_id)
+    assert [evento["acao"] for evento in listagem["auditoria"][:2]] == [
+        "desbanir",
+        "banir",
+    ]
+
+
+def test_banimento_exige_2fa_valido_e_nao_aceita_admin(
+    banco_seguranca,
+):
+    acesso_admin, totp = criar_admin_com_2fa()
+    usuario = criar_usuario(
+        "Ana Silva",
+        "ana@example.com",
+        SENHA_FORTE,
+    )["usuario"]
+    admin_id = acesso_admin["usuario"]["id"]
+
+    invalido = definir_banimento_usuario(
+        admin_id,
+        usuario["id"],
+        True,
+        "Motivo administrativo válido.",
+        "000000",
+    )
+    assert invalido["status"] == "erro"
+    assert autenticar_usuario("ana@example.com", SENHA_FORTE)["status"] == "sucesso"
+
+    contra_admin = definir_banimento_usuario(
+        admin_id,
+        admin_id,
+        True,
+        "Tentativa de bloquear administrador.",
+        totp.now(),
+    )
+    assert contra_admin["status"] == "erro"

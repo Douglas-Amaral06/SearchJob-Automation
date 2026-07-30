@@ -196,6 +196,14 @@ def criar_sessao(usuario_id: int) -> str:
     ttl_horas = _inteiro_ambiente("SESSION_TTL_HOURS", 12, 1, 168)
     conexao = criar_conexao()
     try:
+        conexao.execute("BEGIN IMMEDIATE")
+        usuario = conexao.execute(
+            "SELECT banido_em FROM usuarios WHERE id = ?",
+            (usuario_id,),
+        ).fetchone()
+        if not usuario or usuario["banido_em"]:
+            conexao.rollback()
+            raise PermissionError("Conta indisponível.")
         conexao.execute(
             """
             INSERT INTO sessoes_usuario
@@ -225,7 +233,8 @@ def validar_sessao(token: str | None) -> dict[str, Any] | None:
             """
             SELECT
                 u.id, u.nome, u.email, u.papel, u.email_verificado,
-                u.totp_habilitado, s.id AS sessao_id, s.expira_em, s.revogado_em
+                u.totp_habilitado, u.banido_em,
+                s.id AS sessao_id, s.expira_em, s.revogado_em
             FROM sessoes_usuario AS s
             JOIN usuarios AS u ON u.id = s.usuario_id
             WHERE s.token_hash = ?
@@ -234,6 +243,7 @@ def validar_sessao(token: str | None) -> dict[str, Any] | None:
         ).fetchone()
         if (
             not registro
+            or registro["banido_em"]
             or registro["revogado_em"]
             or (_data(registro["expira_em"]) or datetime.min.replace(tzinfo=timezone.utc))
             <= agora_datetime()
@@ -371,6 +381,15 @@ def criar_usuario(nome: str, email: str, senha: str) -> dict[str, Any]:
     agora = agora_utc()
     conexao = criar_conexao()
     try:
+        existente = conexao.execute(
+            "SELECT id FROM usuarios WHERE email = ? COLLATE NOCASE",
+            (email_limpo,),
+        ).fetchone()
+        if existente:
+            return {
+                "status": "erro",
+                "mensagem": "Não foi possível criar a conta com os dados informados.",
+            }
         cursor = conexao.execute(
             """
             INSERT INTO usuarios
@@ -510,7 +529,8 @@ def autenticar_usuario(
             """
             SELECT
                 id, nome, email, login, senha_hash, senha_salt, papel,
-                email_verificado, totp_segredo_criptografado, totp_habilitado
+                email_verificado, totp_segredo_criptografado, totp_habilitado,
+                banido_em
             FROM usuarios
             WHERE email = ? OR login = ? COLLATE NOCASE
             """,
@@ -525,7 +545,7 @@ def autenticar_usuario(
                 registro["senha_salt"],
             )
         )
-        if not credencial_valida:
+        if not credencial_valida or registro["banido_em"]:
             _registrar_falha_login(email_limpo)
             return {"status": "erro", "mensagem": MENSAGEM_LOGIN_INVALIDO}
 
@@ -551,10 +571,14 @@ def autenticar_usuario(
                 return {"status": "erro", "mensagem": MENSAGEM_LOGIN_INVALIDO}
 
         _limpar_falhas_login(email_limpo)
+        try:
+            session_token = criar_sessao(registro["id"])
+        except PermissionError:
+            return {"status": "erro", "mensagem": MENSAGEM_LOGIN_INVALIDO}
         return {
             "status": "sucesso",
             "usuario": _usuario_publico(registro),
-            "session_token": criar_sessao(registro["id"]),
+            "session_token": session_token,
         }
     finally:
         conexao.close()
@@ -664,10 +688,10 @@ def solicitar_magic_link(
     conexao = criar_conexao()
     try:
         registro = conexao.execute(
-            "SELECT id, email FROM usuarios WHERE email = ?",
+            "SELECT id, email, banido_em FROM usuarios WHERE email = ?",
             (email_limpo,),
         ).fetchone()
-        if not registro:
+        if not registro or registro["banido_em"]:
             return {
                 "status": "sucesso",
                 "mensagem": MENSAGEM_MAGIC_LINK,
@@ -1278,7 +1302,7 @@ def consumir_magic_link(token: str, codigo_2fa: str = "") -> dict[str, Any]:
             SELECT
                 m.id AS magic_id, m.expira_em, m.usado_em,
                 u.id, u.nome, u.email, u.papel, u.email_verificado,
-                u.totp_segredo_criptografado, u.totp_habilitado
+                u.totp_segredo_criptografado, u.totp_habilitado, u.banido_em
             FROM magic_links AS m
             JOIN usuarios AS u ON u.id = m.usuario_id
             WHERE m.token_hash = ?
@@ -1288,6 +1312,7 @@ def consumir_magic_link(token: str, codigo_2fa: str = "") -> dict[str, Any]:
         expiracao = _data(registro["expira_em"]) if registro else None
         if (
             not registro
+            or registro["banido_em"]
             or registro["usado_em"]
             or not expiracao
             or expiracao <= agora_datetime()
@@ -1341,11 +1366,299 @@ def consumir_magic_link(token: str, codigo_2fa: str = "") -> dict[str, Any]:
             "papel": papel,
             "email_verificado": True,
         }
+        try:
+            session_token = criar_sessao(registro["id"])
+        except PermissionError:
+            return {"status": "erro", "mensagem": "Link inválido ou expirado."}
         return {
             "status": "sucesso",
             "usuario": usuario,
-            "session_token": criar_sessao(registro["id"]),
+            "session_token": session_token,
         }
+    finally:
+        conexao.close()
+
+
+def _administrador_para_gestao(administrador_id: int) -> Any | None:
+    conexao = criar_conexao()
+    try:
+        return conexao.execute(
+            """
+            SELECT
+                id, email, papel, totp_habilitado,
+                totp_segredo_criptografado, banido_em
+            FROM usuarios
+            WHERE id = ?
+            """,
+            (administrador_id,),
+        ).fetchone()
+    finally:
+        conexao.close()
+
+
+def listar_usuarios_admin(
+    administrador_id: int,
+    busca: str = "",
+    status: str = "todos",
+    pagina: int = 1,
+    limite: int = 25,
+) -> dict[str, Any]:
+    """Lista somente dados administrativos seguros, nunca hashes ou segredos."""
+    administrador = _administrador_para_gestao(administrador_id)
+    if (
+        not administrador
+        or administrador["papel"] != "admin"
+        or not administrador["totp_habilitado"]
+        or administrador["banido_em"]
+    ):
+        return {"status": "erro", "mensagem": "Operação não autorizada."}
+
+    busca_limpa = " ".join((busca or "").split())[:120]
+    status_limpo = status if status in {"todos", "ativos", "banidos"} else "todos"
+    pagina_segura = max(1, int(pagina or 1))
+    limite_seguro = max(5, min(50, int(limite or 25)))
+
+    condicoes = ["u.papel <> 'admin'"]
+    parametros: list[Any] = []
+    if busca_limpa:
+        termo = (
+            busca_limpa.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        condicoes.append(
+            "(u.nome LIKE ? ESCAPE '\\' OR u.email LIKE ? ESCAPE '\\')"
+        )
+        parametros.extend([f"%{termo}%", f"%{termo}%"])
+    if status_limpo == "ativos":
+        condicoes.append("u.banido_em IS NULL")
+    elif status_limpo == "banidos":
+        condicoes.append("u.banido_em IS NOT NULL")
+
+    where_sql = " AND ".join(condicoes)
+    deslocamento = (pagina_segura - 1) * limite_seguro
+    agora = agora_utc()
+    semana_atras = _iso(agora_datetime() - timedelta(days=7))
+
+    conexao = criar_conexao()
+    try:
+        metricas = conexao.execute(
+            """
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN banido_em IS NULL THEN 1 ELSE 0 END) AS ativos,
+                SUM(CASE WHEN banido_em IS NOT NULL THEN 1 ELSE 0 END) AS banidos,
+                SUM(CASE WHEN email_verificado = 1 THEN 1 ELSE 0 END) AS verificados,
+                SUM(CASE WHEN criado_em >= ? THEN 1 ELSE 0 END) AS novos_7_dias
+            FROM usuarios
+            WHERE papel <> 'admin'
+            """,
+            (semana_atras,),
+        ).fetchone()
+        total_filtrado = conexao.execute(
+            f"SELECT COUNT(*) AS total FROM usuarios AS u WHERE {where_sql}",
+            parametros,
+        ).fetchone()["total"]
+        registros = conexao.execute(
+            f"""
+            SELECT
+                u.id, u.nome, u.email, u.papel, u.email_verificado,
+                u.criado_em, u.banido_em, u.motivo_banimento,
+                (
+                    SELECT COUNT(*)
+                    FROM sessoes_usuario AS s
+                    WHERE s.usuario_id = u.id
+                      AND s.revogado_em IS NULL
+                      AND s.expira_em > ?
+                ) AS sessoes_ativas,
+                (
+                    SELECT MAX(s.ultimo_uso_em)
+                    FROM sessoes_usuario AS s
+                    WHERE s.usuario_id = u.id
+                ) AS ultimo_acesso
+            FROM usuarios AS u
+            WHERE {where_sql}
+            ORDER BY
+                CASE WHEN u.banido_em IS NOT NULL THEN 0 ELSE 1 END,
+                u.criado_em DESC,
+                u.id DESC
+            LIMIT ? OFFSET ?
+            """,
+            [agora, *parametros, limite_seguro, deslocamento],
+        ).fetchall()
+        auditoria = conexao.execute(
+            """
+            SELECT
+                a.acao, a.motivo, a.criado_em,
+                administrador.nome AS administrador_nome,
+                alvo.nome AS usuario_nome,
+                alvo.email AS usuario_email
+            FROM auditoria_admin AS a
+            JOIN usuarios AS administrador ON administrador.id = a.administrador_id
+            JOIN usuarios AS alvo ON alvo.id = a.usuario_alvo_id
+            ORDER BY a.id DESC
+            LIMIT 20
+            """
+        ).fetchall()
+        return {
+            "status": "sucesso",
+            "usuarios": [dict(registro) for registro in registros],
+            "total": total_filtrado,
+            "pagina": pagina_segura,
+            "limite": limite_seguro,
+            "metricas": {
+                chave: int(metricas[chave] or 0)
+                for chave in (
+                    "total",
+                    "ativos",
+                    "banidos",
+                    "verificados",
+                    "novos_7_dias",
+                )
+            },
+            "auditoria": [dict(item) for item in auditoria],
+        }
+    finally:
+        conexao.close()
+
+
+def definir_banimento_usuario(
+    administrador_id: int,
+    usuario_id: int,
+    banir: bool,
+    motivo: str,
+    codigo_2fa: str,
+) -> dict[str, Any]:
+    """Bane/desbane com reautenticação TOTP, auditoria e revogação de sessão."""
+    administrador = _administrador_para_gestao(administrador_id)
+    if (
+        not administrador
+        or administrador["papel"] != "admin"
+        or not administrador["totp_habilitado"]
+        or administrador["banido_em"]
+    ):
+        return {"status": "erro", "mensagem": "Operação não autorizada."}
+
+    bloqueado, segundos = _bloqueio_login(administrador["email"])
+    if bloqueado:
+        return {
+            "status": "bloqueado",
+            "mensagem": (
+                "Muitas tentativas de confirmação. Aguarde "
+                f"{max(1, (segundos + 59) // 60)} minuto(s)."
+            ),
+        }
+    if not _codigo_totp_valido(administrador, codigo_2fa):
+        _registrar_falha_login(administrador["email"])
+        return {"status": "erro", "mensagem": "Código de segurança inválido."}
+
+    motivo_limpo = " ".join((motivo or "").split())[:300]
+    if banir and len(motivo_limpo) < 5:
+        return {
+            "status": "erro",
+            "mensagem": "Informe um motivo com pelo menos 5 caracteres.",
+        }
+    if not banir and not motivo_limpo:
+        motivo_limpo = "Banimento removido após revisão administrativa."
+    if usuario_id == administrador_id:
+        return {"status": "erro", "mensagem": "Você não pode banir sua própria conta."}
+
+    agora = agora_utc()
+    conexao = criar_conexao()
+    try:
+        conexao.execute("BEGIN IMMEDIATE")
+        alvo = conexao.execute(
+            "SELECT id, papel, banido_em FROM usuarios WHERE id = ?",
+            (usuario_id,),
+        ).fetchone()
+        if not alvo:
+            conexao.rollback()
+            return {"status": "erro", "mensagem": "Usuário não encontrado."}
+        if alvo["papel"] == "admin":
+            conexao.rollback()
+            return {
+                "status": "erro",
+                "mensagem": "Contas administrativas não podem ser alteradas aqui.",
+            }
+        if bool(alvo["banido_em"]) == bool(banir):
+            conexao.rollback()
+            return {
+                "status": "sucesso",
+                "mensagem": (
+                    "O usuário já está banido."
+                    if banir
+                    else "O usuário já está ativo."
+                ),
+            }
+
+        acao = "banir" if banir else "desbanir"
+        if banir:
+            conexao.execute(
+                """
+                UPDATE usuarios
+                SET banido_em = ?, banido_por = ?, motivo_banimento = ?,
+                    atualizado_em = ?
+                WHERE id = ?
+                """,
+                (agora, administrador_id, motivo_limpo, agora, usuario_id),
+            )
+            conexao.execute(
+                """
+                UPDATE sessoes_usuario
+                SET revogado_em = ?
+                WHERE usuario_id = ? AND revogado_em IS NULL
+                """,
+                (agora, usuario_id),
+            )
+            conexao.execute(
+                """
+                UPDATE magic_links
+                SET usado_em = ?
+                WHERE usuario_id = ? AND usado_em IS NULL
+                """,
+                (agora, usuario_id),
+            )
+            conexao.execute(
+                """
+                UPDATE codigos_validacao_email
+                SET usado_em = ?
+                WHERE usuario_id = ? AND usado_em IS NULL
+                """,
+                (agora, usuario_id),
+            )
+        else:
+            conexao.execute(
+                """
+                UPDATE usuarios
+                SET banido_em = NULL, banido_por = NULL,
+                    motivo_banimento = NULL, atualizado_em = ?
+                WHERE id = ?
+                """,
+                (agora, usuario_id),
+            )
+
+        conexao.execute(
+            """
+            INSERT INTO auditoria_admin
+                (administrador_id, usuario_alvo_id, acao, motivo, criado_em)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (administrador_id, usuario_id, acao, motivo_limpo, agora),
+        )
+        conexao.commit()
+        _limpar_falhas_login(administrador["email"])
+        return {
+            "status": "sucesso",
+            "mensagem": (
+                "Usuário banido e sessões encerradas."
+                if banir
+                else "Usuário reativado com sucesso."
+            ),
+        }
+    except Exception:
+        conexao.rollback()
+        logger.exception("Falha interna ao alterar banimento")
+        return {"status": "erro", "mensagem": "Não foi possível concluir a operação."}
     finally:
         conexao.close()
 

@@ -124,6 +124,9 @@ def inicializar_banco() -> None:
                 email_verificado INTEGER NOT NULL DEFAULT 0,
                 totp_segredo_criptografado TEXT,
                 totp_habilitado INTEGER NOT NULL DEFAULT 0,
+                banido_em TEXT,
+                banido_por INTEGER,
+                motivo_banimento TEXT,
                 criado_em TEXT NOT NULL,
                 atualizado_em TEXT NOT NULL
             )
@@ -147,6 +150,11 @@ def inicializar_banco() -> None:
             "totp_habilitado": (
                 "ALTER TABLE usuarios ADD COLUMN totp_habilitado "
                 "INTEGER NOT NULL DEFAULT 0"
+            ),
+            "banido_em": "ALTER TABLE usuarios ADD COLUMN banido_em TEXT",
+            "banido_por": "ALTER TABLE usuarios ADD COLUMN banido_por INTEGER",
+            "motivo_banimento": (
+                "ALTER TABLE usuarios ADD COLUMN motivo_banimento TEXT"
             ),
         }
         for coluna, comando in migracoes_usuarios.items():
@@ -248,6 +256,10 @@ def inicializar_banco() -> None:
             ON usuarios(login)
             WHERE login IS NOT NULL
         """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_usuarios_banido
+            ON usuarios(banido_em)
+        """)
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS desafios_admin (
@@ -264,6 +276,26 @@ def inicializar_banco() -> None:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_desafios_admin_usuario
             ON desafios_admin(usuario_id, expira_em)
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS auditoria_admin (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                administrador_id INTEGER NOT NULL,
+                usuario_alvo_id INTEGER NOT NULL,
+                acao TEXT NOT NULL,
+                motivo TEXT NOT NULL,
+                criado_em TEXT NOT NULL,
+                FOREIGN KEY (administrador_id)
+                    REFERENCES usuarios(id) ON DELETE RESTRICT,
+                FOREIGN KEY (usuario_alvo_id)
+                    REFERENCES usuarios(id) ON DELETE RESTRICT,
+                CHECK (acao IN ('banir', 'desbanir'))
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_auditoria_admin_criado
+            ON auditoria_admin(criado_em DESC)
         """)
         
         conn.commit()

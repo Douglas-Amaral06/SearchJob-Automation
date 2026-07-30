@@ -120,6 +120,8 @@ from app.user_resume import (  # noqa: E402
     consumir_magic_link,
     criar_admin_inicial,
     criar_usuario,
+    definir_banimento_usuario,
+    listar_usuarios_admin,
     obter_curriculo,
     preparar_2fa_admin,
     preparar_2fa_admin_por_desafio,
@@ -994,6 +996,211 @@ def renderizar_perfil() -> None:
                         st.error(resultado_2fa["mensagem"])
 
 
+def _data_admin(valor: str | None) -> str:
+    if not valor:
+        return "Nunca"
+    try:
+        data = datetime.fromisoformat(valor.replace("Z", "+00:00"))
+        return data.astimezone().strftime("%d/%m/%Y %H:%M")
+    except (TypeError, ValueError):
+        return "Não informado"
+
+
+def renderizar_painel_admin() -> None:
+    usuario_admin = st.session_state.usuario
+    if (
+        usuario_admin.get("papel") != "admin"
+        or not usuario_admin.get("totp_habilitado")
+    ):
+        st.error("Painel administrativo indisponível.")
+        return
+
+    limpar_formulario = st.session_state.pop("admin-limpar-formulario", None)
+    if limpar_formulario is not None:
+        st.session_state.pop(f"admin-totp-{limpar_formulario}", None)
+        st.session_state.pop(f"admin-motivo-{limpar_formulario}", None)
+
+    st.subheader("Gestão de usuários")
+    st.caption(
+        "Consulte contas, encerre acessos e mantenha um registro auditável "
+        "das ações administrativas."
+    )
+
+    filtros = st.columns([2, 1])
+    busca = filtros[0].text_input(
+        "Buscar por nome ou e-mail",
+        key="admin-busca-usuario",
+        max_chars=120,
+    )
+    status = filtros[1].selectbox(
+        "Status da conta",
+        options=["todos", "ativos", "banidos"],
+        format_func=lambda valor: {
+            "todos": "Todos",
+            "ativos": "Ativos",
+            "banidos": "Banidos",
+        }[valor],
+        key="admin-status-usuario",
+    )
+    filtro_atual = (busca, status)
+    if st.session_state.get("admin-filtro-anterior") != filtro_atual:
+        st.session_state.pagina_admin = 1
+        st.session_state["admin-filtro-anterior"] = filtro_atual
+
+    resultado = listar_usuarios_admin(
+        administrador_id=usuario_admin["id"],
+        busca=busca,
+        status=status,
+        pagina=st.session_state.pagina_admin,
+        limite=20,
+    )
+    if resultado.get("status") != "sucesso":
+        st.error(resultado.get("mensagem", "Não foi possível carregar os usuários."))
+        return
+
+    metricas = resultado["metricas"]
+    colunas_metricas = st.columns(5)
+    colunas_metricas[0].metric("Cadastrados", metricas["total"])
+    colunas_metricas[1].metric("Ativos", metricas["ativos"])
+    colunas_metricas[2].metric("Banidos", metricas["banidos"])
+    colunas_metricas[3].metric("Verificados", metricas["verificados"])
+    colunas_metricas[4].metric("Novos em 7 dias", metricas["novos_7_dias"])
+
+    st.divider()
+    usuarios = resultado["usuarios"]
+    if not usuarios:
+        st.info("Nenhum usuário encontrado com esses filtros.")
+
+    for item in usuarios:
+        banido = bool(item["banido_em"])
+        with st.container(border=True):
+            cabecalho, situacao = st.columns([4, 1])
+            with cabecalho:
+                st.markdown(f"#### {html.escape(item['nome'])}")
+                st.write(f"**E-mail:** {html.escape(item['email'])}")
+            with situacao:
+                if banido:
+                    st.error("BANIDO")
+                else:
+                    st.success("ATIVO")
+
+            detalhes = st.columns(4)
+            detalhes[0].caption(
+                "E-mail: "
+                + ("validado" if item["email_verificado"] else "não validado")
+            )
+            detalhes[1].caption(f"Sessões ativas: {item['sessoes_ativas']}")
+            detalhes[2].caption(f"Criado: {_data_admin(item['criado_em'])}")
+            detalhes[3].caption(
+                f"Último acesso: {_data_admin(item['ultimo_acesso'])}"
+            )
+            if banido:
+                st.warning(
+                    "Motivo: "
+                    f"{html.escape(item['motivo_banimento'] or 'Não informado')} · "
+                    f"Desde {_data_admin(item['banido_em'])}"
+                )
+
+            rotulo_acao = "Reativar usuário" if banido else "Banir usuário"
+            with st.expander(rotulo_acao):
+                st.caption(
+                    "Por segurança, esta ação exige um código atual do seu "
+                    "aplicativo autenticador."
+                )
+                with st.form(f"admin-banimento-{item['id']}"):
+                    motivo = st.text_area(
+                        "Motivo administrativo",
+                        value=(
+                            "Banimento removido após revisão administrativa."
+                            if banido
+                            else ""
+                        ),
+                        max_chars=300,
+                        height=80,
+                        key=f"admin-motivo-{item['id']}",
+                    )
+                    codigo_2fa = st.text_input(
+                        "Código 2FA do administrador",
+                        type="password",
+                        max_chars=6,
+                        key=f"admin-totp-{item['id']}",
+                    )
+                    confirmar = st.form_submit_button(
+                        rotulo_acao,
+                        type="primary",
+                        use_container_width=True,
+                    )
+                if confirmar:
+                    alteracao = definir_banimento_usuario(
+                        administrador_id=usuario_admin["id"],
+                        usuario_id=item["id"],
+                        banir=not banido,
+                        motivo=motivo,
+                        codigo_2fa=codigo_2fa,
+                    )
+                    if alteracao.get("status") == "sucesso":
+                        st.success(alteracao["mensagem"])
+                        st.session_state["admin-limpar-formulario"] = item["id"]
+                        st.rerun()
+                    st.error(alteracao["mensagem"])
+
+    total_paginas = max(1, (resultado["total"] + resultado["limite"] - 1) // resultado["limite"])
+    anterior, indicador, proxima = st.columns([1, 2, 1])
+    with anterior:
+        if st.button(
+            "← Anterior",
+            key="admin-anterior",
+            disabled=st.session_state.pagina_admin <= 1,
+            use_container_width=True,
+        ):
+            st.session_state.pagina_admin -= 1
+            st.rerun()
+    with indicador:
+        st.markdown(
+            f"<p style='text-align:center;padding-top:.55rem'>"
+            f"Página {st.session_state.pagina_admin} de {total_paginas}</p>",
+            unsafe_allow_html=True,
+        )
+    with proxima:
+        if st.button(
+            "Próxima →",
+            key="admin-proxima",
+            disabled=st.session_state.pagina_admin >= total_paginas,
+            use_container_width=True,
+        ):
+            st.session_state.pagina_admin += 1
+            st.rerun()
+
+    with st.expander("Histórico de ações administrativas"):
+        auditoria = resultado.get("auditoria", [])
+        if not auditoria:
+            st.caption("Nenhuma ação administrativa registrada.")
+        for evento in auditoria:
+            acao = "Baniu" if evento["acao"] == "banir" else "Reativou"
+            st.write(
+                f"**{html.escape(evento['administrador_nome'])}** {acao.lower()} "
+                f"**{html.escape(evento['usuario_nome'])}** "
+                f"({html.escape(evento['usuario_email'])})"
+            )
+            st.caption(
+                f"{_data_admin(evento['criado_em'])} · "
+                f"{html.escape(evento['motivo'])}"
+            )
+
+    with st.expander("Sugestões para evoluir este painel"):
+        st.markdown(
+            """
+- Relatórios de denúncias e comportamento suspeito.
+- Redefinição segura de senha por link temporário, sem o administrador conhecer a senha.
+- Exportação dos dados do usuário e exclusão conforme solicitações de privacidade/LGPD.
+- Papéis administrativos separados, como suporte, moderador e auditor.
+- Alertas de muitos logins, mudanças de localização e tentativas bloqueadas.
+- Dashboard de uso: buscas realizadas, candidaturas e fontes mais acessadas.
+- Notificação por e-mail quando uma conta for banida ou reativada.
+            """
+        )
+
+
 def renderizar_curriculo_gerado(curriculo: dict) -> None:
     st.markdown("### Prévia do currículo")
     st.title(valor_texto(curriculo.get("nome_completo"), "Nome completo"))
@@ -1179,6 +1386,7 @@ def inicializar_estado() -> None:
         "filtros": None,
         "pagina": 1,
         "pagina_historico": 1,
+        "pagina_admin": 1,
         "erro_busca": "",
         "busca_por_curriculo": False,
         "usuario": None,
@@ -1234,13 +1442,21 @@ with sair_coluna:
         st.session_state.filtros = None
         st.rerun()
 
-aba_busca, aba_curriculo, aba_historico = st.tabs(
-    [
-        "🔎 Buscar vagas",
-        "✨ Currículo Inteligente",
-        "📋 Minhas candidaturas",
-    ]
+rotulos_abas = [
+    "🔎 Buscar vagas",
+    "✨ Currículo Inteligente",
+    "📋 Minhas candidaturas",
+]
+admin_disponivel = (
+    st.session_state.usuario.get("papel") == "admin"
+    and st.session_state.usuario.get("totp_habilitado")
 )
+if admin_disponivel:
+    rotulos_abas.append("🛡️ Administração")
+
+abas_principais = st.tabs(rotulos_abas)
+aba_busca, aba_curriculo, aba_historico = abas_principais[:3]
+aba_admin = abas_principais[3] if admin_disponivel else None
 
 with aba_busca:
     curriculo_usuario = obter_curriculo(st.session_state.usuario["id"])
@@ -1656,3 +1872,7 @@ with aba_historico:
             ):
                 st.session_state.pagina_historico += 1
                 st.rerun()
+
+if aba_admin is not None:
+    with aba_admin:
+        renderizar_painel_admin()
