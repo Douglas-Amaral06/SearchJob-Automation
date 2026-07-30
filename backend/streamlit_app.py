@@ -152,76 +152,115 @@ st.markdown(
     """
     <style>
         :root {
-            color-scheme: dark;
+            color-scheme: light;
         }
         .stApp {
-            color: #f8fafc;
+            color: #163247;
             background:
-                radial-gradient(circle at 12% 8%, rgba(34, 211, 238, .13), transparent 28rem),
-                radial-gradient(circle at 88% 18%, rgba(168, 85, 247, .14), transparent 30rem),
-                linear-gradient(145deg, #050816 0%, #080d1d 55%, #050816 100%);
+                radial-gradient(circle at 8% 4%, rgba(103, 232, 249, .28), transparent 26rem),
+                radial-gradient(circle at 94% 16%, rgba(186, 230, 253, .48), transparent 30rem),
+                linear-gradient(150deg, #ffffff 0%, #f5fcff 48%, #ecfaff 100%);
             background-attachment: fixed;
         }
         [data-testid="stHeader"] {
-            background: transparent;
+            background: rgba(247, 252, 255, .88);
+            backdrop-filter: blur(12px);
         }
         .block-container {
-            max-width: 1120px;
-            padding-top: 2rem;
+            max-width: 1160px;
+            padding-top: 2.35rem;
             padding-bottom: 4rem;
         }
         .hero {
             position: relative;
             overflow: hidden;
-            padding: 2rem 2.2rem;
-            border-radius: 1.25rem;
-            color: #ffffff;
+            padding: 2.35rem 2.5rem;
+            border-radius: 1.5rem;
+            color: #123047;
             background:
-                radial-gradient(circle at 85% 10%, rgba(34, 211, 238, .32), transparent 18rem),
-                linear-gradient(125deg, #111b45 0%, #312e81 52%, #172554 100%);
-            border: 1px solid rgba(34, 211, 238, .55);
+                radial-gradient(circle at 92% 8%, rgba(34, 211, 238, .3), transparent 20rem),
+                radial-gradient(circle at 72% 100%, rgba(125, 211, 252, .25), transparent 18rem),
+                linear-gradient(125deg, rgba(255, 255, 255, .98), rgba(224, 247, 255, .98));
+            border: 1px solid rgba(6, 182, 212, .3);
             box-shadow:
-                0 0 28px rgba(34, 211, 238, .16),
-                0 18px 55px rgba(0, 0, 0, .35);
-            margin-bottom: 1.4rem;
+                0 0 30px rgba(34, 211, 238, .13),
+                0 18px 50px rgba(14, 116, 144, .11);
+            margin-bottom: 1.55rem;
+        }
+        .hero::after {
+            content: "";
+            position: absolute;
+            width: 9rem;
+            height: 9rem;
+            right: 2.2rem;
+            top: 50%;
+            transform: translateY(-50%);
+            border-radius: 50%;
+            background:
+                radial-gradient(circle, rgba(255,255,255,.9) 0 7%, transparent 8%),
+                radial-gradient(circle, rgba(34,211,238,.24), rgba(125,211,252,.08) 58%, transparent 60%);
+            box-shadow: 0 0 42px rgba(34, 211, 238, .2);
+            pointer-events: none;
+        }
+        .hero > * {
+            position: relative;
+            z-index: 1;
+        }
+        .hero-eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: .45rem;
+            margin-bottom: .75rem;
+            padding: .34rem .72rem;
+            border-radius: 999px;
+            color: #0e7490;
+            background: rgba(207, 250, 254, .78);
+            border: 1px solid rgba(6, 182, 212, .22);
+            font-size: .79rem;
+            font-weight: 800;
+            letter-spacing: .04em;
+            text-transform: uppercase;
         }
         .hero h1 {
             margin: 0;
-            font-size: 2.25rem;
-            color: #ffffff;
-            text-shadow: 0 0 18px rgba(34, 211, 238, .35);
+            max-width: 760px;
+            font-size: clamp(2rem, 4vw, 2.75rem);
+            line-height: 1.08;
+            letter-spacing: -.035em;
+            color: #123047;
         }
         .hero p {
-            margin: .55rem 0 0;
-            color: #dbeafe;
-            font-size: 1.02rem;
+            max-width: 720px;
+            margin: .8rem 0 0;
+            color: #476579;
+            font-size: 1.05rem;
+            line-height: 1.65;
         }
         [data-testid="stTabs"] [data-baseweb="tab-list"] {
             gap: 1.4rem;
-            border-bottom: 1px solid rgba(148, 163, 184, .25);
+            border-bottom: 1px solid #cfeaf3;
         }
         [data-testid="stTabs"] button[role="tab"] {
-            color: #cbd5e1;
+            color: #587486;
             font-weight: 700;
         }
         [data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
-            color: #22d3ee;
-            text-shadow: 0 0 12px rgba(34, 211, 238, .55);
+            color: #0787a4;
         }
         .fonte-chip {
             display: inline-block;
             padding: .28rem .65rem;
             margin: 0 .35rem .35rem 0;
             border-radius: 999px;
-            background: rgba(34, 211, 238, .12);
-            border: 1px solid rgba(34, 211, 238, .42);
-            color: #67e8f9;
+            background: #e2f9ff;
+            border: 1px solid #9ee8f5;
+            color: #0e7490;
             font-size: .78rem;
             font-weight: 600;
             box-shadow: 0 0 12px rgba(34, 211, 238, .1);
         }
         .job-meta {
-            color: #cbd5e1;
+            color: #527184;
             margin: .15rem 0 .65rem;
         }
         .job-badges span {
@@ -229,44 +268,44 @@ st.markdown(
             padding: .2rem .55rem;
             margin: 0 .3rem .25rem 0;
             border-radius: 999px;
-            background: rgba(168, 85, 247, .14);
-            border: 1px solid rgba(192, 132, 252, .4);
-            color: #e9d5ff;
+            background: #e0f7ff;
+            border: 1px solid #a5e6f2;
+            color: #0c7188;
             font-size: .75rem;
         }
         div[data-testid="stForm"] {
             background:
-                linear-gradient(135deg, rgba(15, 23, 42, .96), rgba(17, 24, 50, .96));
-            border: 1px solid rgba(34, 211, 238, .38);
-            border-radius: 1rem;
-            padding: 1.2rem;
+                linear-gradient(145deg, rgba(255, 255, 255, .98), rgba(239, 251, 255, .98));
+            border: 1px solid rgba(6, 182, 212, .24);
+            border-radius: 1.2rem;
+            padding: 1.35rem;
             box-shadow:
-                inset 0 1px 0 rgba(255, 255, 255, .04),
-                0 0 24px rgba(34, 211, 238, .1);
+                inset 0 1px 0 rgba(255, 255, 255, .9),
+                0 12px 36px rgba(14, 116, 144, .09);
         }
         div[data-testid="stForm"] label,
         div[data-testid="stForm"] [data-testid="stWidgetLabel"] p,
         div[data-testid="stForm"] [data-testid="stCheckbox"] p {
-            color: #e2e8f0 !important;
+            color: #294b60 !important;
             font-weight: 650;
             opacity: 1 !important;
         }
         div[data-testid="stForm"] [data-baseweb="input"],
         div[data-testid="stForm"] [data-baseweb="select"] > div {
-            color: #ffffff;
-            background: #090f20;
-            border-color: rgba(99, 102, 241, .65);
-            box-shadow: inset 0 0 12px rgba(99, 102, 241, .08);
+            color: #163247;
+            background: #ffffff;
+            border-color: #b8dde8;
+            box-shadow: inset 0 1px 3px rgba(14, 116, 144, .04);
         }
         div[data-testid="stForm"] input,
         div[data-testid="stForm"] [data-baseweb="select"] span {
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
+            color: #163247 !important;
+            -webkit-text-fill-color: #163247 !important;
         }
         div[data-testid="stForm"] [data-baseweb="input"]:focus-within,
         div[data-testid="stForm"] [data-baseweb="select"] > div:focus-within {
-            border-color: #22d3ee;
-            box-shadow: 0 0 0 1px #22d3ee, 0 0 18px rgba(34, 211, 238, .2);
+            border-color: #06b6d4;
+            box-shadow: 0 0 0 2px rgba(6, 182, 212, .16), 0 0 18px rgba(34, 211, 238, .12);
         }
         div[data-testid="stForm"] [data-testid="stCheckbox"] {
             min-height: 2.9rem;
@@ -274,18 +313,43 @@ st.markdown(
             align-items: center;
         }
         div[data-testid="stForm"] button[kind="primaryFormSubmit"] {
-            color: #04111b;
+            color: #083344;
             font-weight: 800;
-            border: 1px solid #67e8f9;
-            background: linear-gradient(110deg, #22d3ee, #60a5fa);
-            box-shadow: 0 0 18px rgba(34, 211, 238, .25);
+            border: 1px solid #62d9eb;
+            border-radius: .7rem;
+            background: linear-gradient(110deg, #9beaf5, #7dd3fc);
+            box-shadow: 0 8px 22px rgba(14, 165, 233, .17);
             transition: transform .18s ease, box-shadow .18s ease;
         }
         div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
-            color: #020617;
-            border-color: #a5f3fc;
+            color: #083344;
+            border-color: #22d3ee;
             transform: translateY(-2px);
-            box-shadow: 0 0 28px rgba(34, 211, 238, .48);
+            box-shadow: 0 0 24px rgba(34, 211, 238, .32), 0 10px 26px rgba(14, 116, 144, .15);
+        }
+        .stButton > button,
+        .stLinkButton > a,
+        [data-testid="stDownloadButton"] > button {
+            border-radius: .7rem;
+            border-color: #b4dce7;
+            color: #155e75;
+            background: rgba(255, 255, 255, .9);
+            font-weight: 700;
+            transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+        }
+        .stButton > button:hover,
+        .stLinkButton > a:hover,
+        [data-testid="stDownloadButton"] > button:hover {
+            color: #0e7490;
+            border-color: #67dcea;
+            transform: translateY(-1px);
+            box-shadow: 0 8px 22px rgba(14, 116, 144, .12);
+        }
+        [data-testid="stMetric"] {
+            padding: .8rem;
+            border: 1px solid #c9eaf2;
+            border-radius: .9rem;
+            background: rgba(255, 255, 255, .75);
         }
         .job-card-marker {
             display: none;
@@ -295,15 +359,15 @@ st.markdown(
         ) {
             position: relative;
             z-index: 1;
-            color: #f8fafc;
+            color: #163247;
             background:
-                radial-gradient(circle at 100% 0%, rgba(34, 211, 238, .12), transparent 14rem),
-                linear-gradient(135deg, rgba(12, 20, 42, .98), rgba(18, 15, 45, .98));
-            border: 1px solid rgba(34, 211, 238, .34) !important;
-            border-radius: 1rem !important;
+                radial-gradient(circle at 100% 0%, rgba(103, 232, 249, .3), transparent 15rem),
+                linear-gradient(135deg, rgba(239, 252, 255, .99), rgba(218, 246, 255, .98));
+            border: 1px solid rgba(6, 182, 212, .38) !important;
+            border-radius: 1.15rem !important;
             box-shadow:
-                0 0 18px rgba(34, 211, 238, .08),
-                0 12px 32px rgba(0, 0, 0, .24);
+                0 0 18px rgba(34, 211, 238, .1),
+                0 12px 30px rgba(14, 116, 144, .1);
             transition:
                 transform .22s cubic-bezier(.2, .8, .2, 1),
                 border-color .22s ease,
@@ -314,12 +378,12 @@ st.markdown(
             > div[data-testid="stElementContainer"] .job-card-marker
         ):hover {
             z-index: 5;
-            transform: scale(1.018);
-            border-color: rgba(34, 211, 238, .9) !important;
+            transform: translateY(-3px) scale(1.018);
+            border-color: rgba(6, 182, 212, .88) !important;
             box-shadow:
-                0 0 16px rgba(34, 211, 238, .35),
-                0 0 34px rgba(168, 85, 247, .18),
-                0 18px 45px rgba(0, 0, 0, .4);
+                0 0 18px rgba(34, 211, 238, .3),
+                0 0 36px rgba(56, 189, 248, .2),
+                0 20px 42px rgba(14, 116, 144, .16);
         }
         div[data-testid="stVerticalBlock"]:has(
             > div[data-testid="stElementContainer"] .job-card-marker
@@ -330,21 +394,30 @@ st.markdown(
         div[data-testid="stVerticalBlock"]:has(
             > div[data-testid="stElementContainer"] .job-card-marker
         ) strong {
-            color: #f8fafc;
+            color: #163247;
         }
         div[data-testid="stVerticalBlock"]:has(
             > div[data-testid="stElementContainer"] .job-card-marker
         ) h3 {
-            color: #a5f3fc;
-            text-shadow: 0 0 14px rgba(34, 211, 238, .2);
+            color: #075d75;
         }
         [data-testid="stAlert"] {
-            color: #bae6fd;
-            background: rgba(8, 47, 73, .7);
-            border: 1px solid rgba(56, 189, 248, .38);
+            color: #164e63;
+            background: rgba(224, 247, 255, .82);
+            border: 1px solid rgba(14, 165, 233, .24);
+            border-radius: .85rem;
         }
         [data-testid="stCaptionContainer"] p {
-            color: #94a3b8;
+            color: #658294;
+        }
+        [data-testid="stExpander"],
+        [data-testid="stDialog"] [role="dialog"] {
+            border-color: #c9e8f1;
+            border-radius: 1rem;
+            background: rgba(255, 255, 255, .94);
+        }
+        hr {
+            border-color: #d9edf3 !important;
         }
         @media (prefers-reduced-motion: reduce) {
             div[data-testid="stVerticalBlock"]:has(
@@ -365,6 +438,13 @@ st.markdown(
             }
             .hero {
                 padding: 1.45rem;
+            }
+            .hero::after {
+                width: 6rem;
+                height: 6rem;
+                right: -1.5rem;
+                top: 15%;
+                opacity: .55;
             }
             .hero h1 {
                 font-size: 1.75rem;
@@ -599,8 +679,12 @@ def renderizar_login() -> None:
     st.markdown(
         """
         <section class="hero">
-            <h1>SearchJob Automation</h1>
-            <p>Entre para buscar vagas e criar seu currículo inteligente.</p>
+            <span class="hero-eyebrow">Seu próximo passo começa aqui</span>
+            <h1>Uma busca de emprego mais leve e mais inteligente.</h1>
+            <p>
+                Encontre oportunidades que combinam com você, organize suas
+                candidaturas e crie um currículo forte — tudo no mesmo lugar.
+            </p>
         </section>
         """,
         unsafe_allow_html=True,
@@ -1452,8 +1536,12 @@ if not st.session_state.usuario:
 st.markdown(
     """
     <section class="hero">
-        <h1>SearchJob Automation</h1>
-        <p>Busque vagas em vários portais e acompanhe suas candidaturas em um só lugar.</p>
+        <span class="hero-eyebrow">SearchJob · sua jornada profissional</span>
+        <h1>Boas oportunidades, sem complicação.</h1>
+        <p>
+            Pesquise em vários portais, descubra vagas compatíveis com o seu
+            perfil e acompanhe cada candidatura com tranquilidade.
+        </p>
     </section>
     """,
     unsafe_allow_html=True,
