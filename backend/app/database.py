@@ -297,6 +297,74 @@ def inicializar_banco() -> None:
             CREATE INDEX IF NOT EXISTS idx_auditoria_admin_criado
             ON auditoria_admin(criado_em DESC)
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS campanhas_candidatura (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER NOT NULL,
+                cargo TEXT NOT NULL,
+                cidade TEXT NOT NULL,
+                estado TEXT NOT NULL,
+                modalidade TEXT NOT NULL,
+                incluir_pcd INTEGER NOT NULL DEFAULT 0,
+                plataformas_json TEXT NOT NULL,
+                limite_vagas INTEGER NOT NULL DEFAULT 10,
+                status TEXT NOT NULL DEFAULT 'aguardando_login',
+                total_vagas INTEGER NOT NULL DEFAULT 0,
+                criado_em TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL,
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+                CHECK (
+                    status IN (
+                        'aguardando_login', 'pronta', 'pausada', 'concluida'
+                    )
+                )
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_campanhas_usuario
+            ON campanhas_candidatura(usuario_id, criado_em DESC)
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS logins_plataforma_campanha (
+                campanha_id INTEGER NOT NULL,
+                plataforma TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'aguardando',
+                confirmado_em TEXT,
+                atualizado_em TEXT NOT NULL,
+                PRIMARY KEY (campanha_id, plataforma),
+                FOREIGN KEY (campanha_id)
+                    REFERENCES campanhas_candidatura(id) ON DELETE CASCADE,
+                CHECK (status IN ('aguardando', 'confirmado'))
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS itens_campanha_candidatura (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campanha_id INTEGER NOT NULL,
+                chave_vaga TEXT NOT NULL,
+                fonte TEXT NOT NULL,
+                id_externo TEXT NOT NULL,
+                titulo TEXT NOT NULL,
+                empresa TEXT NOT NULL,
+                local TEXT,
+                modalidade TEXT,
+                url_candidatura TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pendente',
+                criado_em TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL,
+                FOREIGN KEY (campanha_id)
+                    REFERENCES campanhas_candidatura(id) ON DELETE CASCADE,
+                UNIQUE (campanha_id, chave_vaga),
+                CHECK (status IN ('pendente', 'candidatado', 'ignorado'))
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_itens_campanha_status
+            ON itens_campanha_candidatura(campanha_id, status)
+        """)
         
         conn.commit()
         logger.info(f"Banco de dados inicializado em: {DATABASE_PATH}")

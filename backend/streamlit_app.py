@@ -106,6 +106,17 @@ from app.database import (  # noqa: E402
     salvar_candidatura,
 )
 from app.services.job_aggregator import buscar_vagas_agregadas  # noqa: E402
+from app.services.auto_application_service import (  # noqa: E402
+    atualizar_item_campanha,
+    confirmar_login_plataforma,
+    fontes_disponiveis_candidatura,
+    listar_campanhas_candidatura,
+    listar_itens_campanha,
+    listar_logins_campanha,
+    plataforma_exige_login_central,
+    preparar_campanha_candidatura,
+    url_login_plataforma,
+)
 from app.services.gemini_resume_service import (  # noqa: E402
     gemini_configurado,
     gerar_curriculo_com_ia,
@@ -236,6 +247,51 @@ st.markdown(
             font-size: 1.05rem;
             line-height: 1.65;
         }
+        .turbo-callout {
+            position: relative;
+            overflow: hidden;
+            margin: .25rem 0 1.2rem;
+            padding: 1.25rem 1.4rem;
+            border-radius: 1.15rem;
+            color: #164e63;
+            background:
+                radial-gradient(circle at 96% 10%, rgba(34, 211, 238, .28), transparent 10rem),
+                linear-gradient(125deg, #ecfeff, #e0f7ff);
+            border: 1px solid rgba(6, 182, 212, .32);
+            box-shadow: 0 10px 28px rgba(14, 116, 144, .09);
+        }
+        .turbo-callout h3 {
+            margin: 0 0 .3rem;
+            color: #075d75;
+            font-size: 1.2rem;
+        }
+        .turbo-callout p {
+            max-width: 780px;
+            margin: 0;
+            color: #527184;
+            line-height: 1.55;
+        }
+        .turbo-status {
+            display: inline-block;
+            margin: 0 .3rem .25rem 0;
+            padding: .24rem .6rem;
+            border: 1px solid #9fe5ef;
+            border-radius: 999px;
+            color: #0e7490;
+            background: #e2faff;
+            font-size: .76rem;
+            font-weight: 800;
+        }
+        .turbo-login-ok {
+            color: #166534;
+            background: #ecfdf5;
+            border-color: #a7f3d0;
+        }
+        .turbo-login-wait {
+            color: #9a5b07;
+            background: #fffbeb;
+            border-color: #fde68a;
+        }
         [data-testid="stTabs"] [data-baseweb="tab-list"] {
             gap: 1.4rem;
             border-bottom: 1px solid #cfeaf3;
@@ -345,6 +401,19 @@ st.markdown(
             transform: translateY(-1px);
             box-shadow: 0 8px 22px rgba(14, 116, 144, .12);
         }
+        .stButton > button[kind="primary"],
+        .stLinkButton > a[kind="primary"] {
+            color: #083344;
+            border-color: #62d9eb;
+            background: linear-gradient(110deg, #9beaf5, #7dd3fc);
+            box-shadow: 0 8px 22px rgba(14, 165, 233, .17);
+        }
+        .stButton > button[kind="primary"]:hover,
+        .stLinkButton > a[kind="primary"]:hover {
+            color: #083344;
+            border-color: #22d3ee;
+            box-shadow: 0 0 24px rgba(34, 211, 238, .3);
+        }
         [data-testid="stMetric"] {
             padding: .8rem;
             border: 1px solid #c9eaf2;
@@ -435,6 +504,13 @@ st.markdown(
         @media (max-width: 700px) {
             .block-container {
                 padding-top: 1rem;
+            }
+            [data-testid="stHorizontalBlock"] {
+                flex-direction: column;
+            }
+            [data-testid="stHorizontalBlock"] > div {
+                width: 100% !important;
+                flex: 1 1 100% !important;
             }
             .hero {
                 padding: 1.45rem;
@@ -1426,6 +1502,354 @@ def remover_vaga(vaga: dict[str, Any]) -> None:
         st.error(resultado.get("mensagem", "Não foi possível remover a candidatura."))
 
 
+def _rotulo_status_campanha(status: str) -> str:
+    return {
+        "aguardando_login": "Aguardando login",
+        "pronta": "Pronta",
+        "pausada": "Pausada",
+        "concluida": "Concluída",
+    }.get(status, "Em preparação")
+
+
+def renderizar_painel_candidatura_turbo() -> None:
+    usuario_id = st.session_state.usuario["id"]
+    plataformas_disponiveis = fontes_disponiveis_candidatura()
+
+    st.markdown(
+        """
+        <div class="turbo-callout">
+            <h3>⚡ Candidatura Turbo</h3>
+            <p>
+                Escolha o seu objetivo e as plataformas. O SearchJob encontra,
+                organiza e acompanha as vagas. O envio final permanece sob sua
+                confirmação no site da empresa, sem guardar senhas externas.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    curriculo = obter_curriculo(usuario_id)
+    if not curriculo or not curriculo.get("gerado"):
+        st.warning(
+            "Crie a versão final do seu currículo na aba Currículo Inteligente "
+            "antes de iniciar uma campanha."
+        )
+
+    with st.form("formulario-candidatura-turbo"):
+        linha_objetivo = st.columns([2, 1.4, .6])
+        cargo_turbo = linha_objetivo[0].text_input(
+            "Qual vaga você procura?",
+            placeholder="Ex.: Auxiliar Administrativo",
+        )
+        cidade_turbo = linha_objetivo[1].text_input(
+            "Cidade",
+            placeholder="Ex.: São Paulo",
+        )
+        estado_turbo = linha_objetivo[2].text_input(
+            "UF",
+            placeholder="SP",
+            max_chars=2,
+        )
+
+        linha_preferencias = st.columns([1.25, 1, 1])
+        modalidade_turbo = linha_preferencias[0].selectbox(
+            "Modalidade",
+            ["Presencial", "Híbrido", "Remoto"],
+            key="turbo-modalidade",
+        )
+        incluir_pcd_turbo = linha_preferencias[1].checkbox(
+            "Somente vagas PCD",
+            value=False,
+        )
+        limite_turbo = int(
+            linha_preferencias[2].number_input(
+                "Quantidade de candidaturas",
+                min_value=1,
+                max_value=50,
+                value=10,
+                step=1,
+                help="Mínimo de 1 e máximo de 50 vagas por campanha.",
+            )
+        )
+
+        plataformas_turbo = st.multiselect(
+            "Plataformas",
+            options=plataformas_disponiveis,
+            default=plataformas_disponiveis,
+            help=(
+                "A busca usará somente as fontes selecionadas. A Gupy ficará "
+                "aguardando até você confirmar que entrou na conta."
+            ),
+        )
+        periodo_turbo = st.selectbox(
+            "Período das vagas",
+            [
+                ("Últimos 7 dias", 7),
+                ("Últimos 15 dias", 15),
+                ("Últimos 30 dias", 30),
+                ("Qualquer data", None),
+            ],
+            index=2,
+            format_func=lambda opcao: opcao[0],
+        )
+        consentimento_turbo = st.checkbox(
+            "Confirmo que revisarei cada vaga antes do envio final.",
+            value=False,
+        )
+        criar_campanha = st.form_submit_button(
+            "Criar campanha automática",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if criar_campanha:
+        if not curriculo or not curriculo.get("gerado"):
+            st.error("Finalize seu currículo antes de criar a campanha.")
+        elif not consentimento_turbo:
+            st.error("Confirme a revisão das vagas para continuar.")
+        elif not cargo_turbo.strip() or not cidade_turbo.strip() or len(
+            estado_turbo.strip()
+        ) != 2:
+            st.error("Informe cargo, cidade e uma UF com duas letras.")
+        elif not plataformas_turbo:
+            st.error("Selecione pelo menos uma plataforma.")
+        else:
+            with st.spinner(
+                f"Buscando e organizando até {limite_turbo} vagas..."
+            ):
+                try:
+                    resultado_campanha = asyncio.run(
+                        preparar_campanha_candidatura(
+                            usuario_id=usuario_id,
+                            cargo=cargo_turbo,
+                            cidade=cidade_turbo,
+                            estado=estado_turbo.upper(),
+                            modalidade=modalidade_turbo,
+                            incluir_pcd=incluir_pcd_turbo,
+                            plataformas=plataformas_turbo,
+                            limite_vagas=limite_turbo,
+                            max_dias=periodo_turbo[1],
+                        )
+                    )
+                except Exception:
+                    logger.exception("Falha interna ao preparar campanha")
+                    resultado_campanha = {
+                        "status": "erro",
+                        "mensagem": "Não foi possível preparar a campanha agora.",
+                    }
+
+            if resultado_campanha.get("status") == "sucesso":
+                st.session_state.campanha_turbo_ativa = resultado_campanha[
+                    "campanha_id"
+                ]
+                st.session_state.pagina_turbo = 1
+                st.success(resultado_campanha["mensagem"])
+                if resultado_campanha["total_vagas"] == 0:
+                    st.info(
+                        "A campanha foi salva, mas nenhuma vaga compatível foi "
+                        "encontrada nesta busca."
+                    )
+                st.rerun()
+            else:
+                st.error(resultado_campanha.get("mensagem"))
+
+    campanhas_resultado = listar_campanhas_candidatura(usuario_id)
+    campanhas = campanhas_resultado.get("campanhas", [])
+    if not campanhas:
+        st.info("Você ainda não criou nenhuma campanha de candidatura.")
+        return
+
+    campanhas_por_id = {item["id"]: item for item in campanhas}
+    campanha_padrao = st.session_state.get("campanha_turbo_ativa")
+    if campanha_padrao not in campanhas_por_id:
+        campanha_padrao = campanhas[0]["id"]
+    ids_campanhas = list(campanhas_por_id)
+    indice_campanha = ids_campanhas.index(campanha_padrao)
+
+    campanha_id = st.selectbox(
+        "Campanha em exibição",
+        options=ids_campanhas,
+        index=indice_campanha,
+        format_func=lambda identificador: (
+            f"#{identificador} · {campanhas_por_id[identificador]['cargo']} · "
+            f"{_rotulo_status_campanha(campanhas_por_id[identificador]['status'])}"
+        ),
+    )
+    if campanha_id != st.session_state.get("campanha_turbo_ativa"):
+        st.session_state.campanha_turbo_ativa = campanha_id
+        st.session_state.pagina_turbo = 1
+
+    campanha = campanhas_por_id[campanha_id]
+    metricas_turbo = st.columns(4)
+    metricas_turbo[0].metric("Selecionadas", campanha["total_vagas"])
+    metricas_turbo[1].metric("Pendentes", campanha["pendentes"])
+    metricas_turbo[2].metric("Enviadas", campanha["candidatadas"])
+    metricas_turbo[3].metric("Ignoradas", campanha["ignoradas"])
+    st.markdown(
+        "".join(
+            [
+                f'<span class="turbo-status">'
+                f'{html.escape(_rotulo_status_campanha(campanha["status"]))}</span>',
+                f'<span class="turbo-status">Limite: {campanha["limite_vagas"]}</span>',
+                f'<span class="turbo-status">'
+                f'{html.escape(campanha["cidade"])}, '
+                f'{html.escape(campanha["estado"])}</span>',
+            ]
+        ),
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("#### Acesso às plataformas")
+    logins = listar_logins_campanha(usuario_id, campanha_id)
+    for login in logins:
+        plataforma = login["plataforma"]
+        confirmado = login["status"] == "confirmado"
+        classe = "turbo-login-ok" if confirmado else "turbo-login-wait"
+        rotulo = "Liberada" if confirmado else "Aguardando login"
+        st.markdown(
+            f'<span class="turbo-status {classe}">'
+            f'{html.escape(plataforma)} · {rotulo}</span>',
+            unsafe_allow_html=True,
+        )
+        if not confirmado and plataforma_exige_login_central(plataforma):
+            login_colunas = st.columns([1, 1, 2])
+            url_login = url_login_plataforma(plataforma)
+            if url_login:
+                login_colunas[0].link_button(
+                    f"Entrar na {plataforma}",
+                    url_login,
+                    use_container_width=True,
+                )
+            if login_colunas[1].button(
+                "Já estou logado",
+                key=f"confirmar-login-{campanha_id}-{plataforma}",
+                use_container_width=True,
+            ):
+                confirmacao = confirmar_login_plataforma(
+                    usuario_id,
+                    campanha_id,
+                    plataforma,
+                )
+                if confirmacao.get("status") == "sucesso":
+                    st.success(confirmacao["mensagem"])
+                    st.rerun()
+                st.error(confirmacao.get("mensagem"))
+            login_colunas[2].caption(
+                "Faça o login no mesmo navegador e volte para liberar a fila. "
+                "O SearchJob não recebe nem armazena sua senha."
+            )
+
+    itens_resultado = listar_itens_campanha(usuario_id, campanha_id)
+    if itens_resultado.get("status") != "sucesso":
+        st.error(itens_resultado.get("mensagem"))
+        return
+    itens = itens_resultado["itens"]
+    if not itens:
+        st.info("Nenhuma vaga foi encontrada para esta campanha.")
+        return
+
+    itens_por_pagina = 10
+    total_paginas = max(1, (len(itens) + itens_por_pagina - 1) // itens_por_pagina)
+    pagina_atual = max(
+        1,
+        min(total_paginas, int(st.session_state.pagina_turbo or 1)),
+    )
+    inicio = (pagina_atual - 1) * itens_por_pagina
+
+    st.markdown("#### Fila de candidaturas")
+    for item in itens[inicio : inicio + itens_por_pagina]:
+        login_liberado = item["status_login"] == "confirmado"
+        with st.container(border=True):
+            st.markdown(
+                '<span class="job-card-marker" aria-hidden="true"></span>',
+                unsafe_allow_html=True,
+            )
+            texto, acoes = st.columns([3.4, 1.35], gap="large")
+            with texto:
+                st.subheader(item["titulo"])
+                st.write(f"**{item['empresa']}**")
+                st.caption(
+                    f"{item['local']} · {item['modalidade']} · {item['fonte']}"
+                )
+                st.markdown(
+                    f'<span class="turbo-status">'
+                    f'{html.escape(item["status"].title())}</span>',
+                    unsafe_allow_html=True,
+                )
+                if not login_liberado:
+                    st.warning(
+                        f"Entre na {item['fonte']} para liberar esta candidatura."
+                    )
+            with acoes:
+                if login_liberado and item["status"] == "pendente":
+                    st.link_button(
+                        "Abrir candidatura",
+                        item["url_candidatura"],
+                        use_container_width=True,
+                        type="primary",
+                    )
+                    if st.button(
+                        "Marcar como enviada",
+                        key=f"turbo-enviada-{item['id']}",
+                        use_container_width=True,
+                    ):
+                        persistencia = salvar_candidatura(
+                            fonte=item["fonte"],
+                            id_externo=item["id_externo"],
+                            titulo=item["titulo"],
+                            empresa=item["empresa"],
+                            local=item["local"],
+                            url_candidatura=item["url_candidatura"],
+                        )
+                        if persistencia.get("status") == "sucesso":
+                            atualizar_item_campanha(
+                                usuario_id,
+                                item["id"],
+                                "candidatado",
+                            )
+                            st.rerun()
+                        st.error(persistencia.get("mensagem"))
+                    if st.button(
+                        "Ignorar vaga",
+                        key=f"turbo-ignorar-{item['id']}",
+                        use_container_width=True,
+                    ):
+                        atualizar_item_campanha(
+                            usuario_id,
+                            item["id"],
+                            "ignorado",
+                        )
+                        st.rerun()
+                elif item["status"] == "candidatado":
+                    st.success("Candidatura enviada")
+                elif item["status"] == "ignorado":
+                    st.caption("Vaga ignorada")
+
+    navegacao_turbo = st.columns([1, 2, 1])
+    if navegacao_turbo[0].button(
+        "← Anterior",
+        key="turbo-anterior",
+        disabled=pagina_atual <= 1,
+        use_container_width=True,
+    ):
+        st.session_state.pagina_turbo = pagina_atual - 1
+        st.rerun()
+    navegacao_turbo[1].markdown(
+        f"<p style='text-align:center;padding-top:.55rem'>"
+        f"Página {pagina_atual} de {total_paginas}</p>",
+        unsafe_allow_html=True,
+    )
+    if navegacao_turbo[2].button(
+        "Próxima →",
+        key="turbo-proxima",
+        disabled=pagina_atual >= total_paginas,
+        use_container_width=True,
+    ):
+        st.session_state.pagina_turbo = pagina_atual + 1
+        st.rerun()
+
+
 def renderizar_vaga(vaga: dict[str, Any], contexto: str = "busca") -> None:
     titulo = valor_texto(vaga.get("titulo"), "Título não informado")
     empresa = valor_texto(vaga.get("empresa"), "Empresa não informada")
@@ -1506,6 +1930,9 @@ def inicializar_estado() -> None:
         "pagina": 1,
         "pagina_historico": 1,
         "pagina_admin": 1,
+        "pagina_turbo": 1,
+        "painel_turbo_aberto": False,
+        "campanha_turbo_ativa": None,
         "erro_busca": "",
         "busca_por_curriculo": False,
         "usuario": None,
@@ -1582,6 +2009,39 @@ aba_busca, aba_curriculo, aba_historico = abas_principais[:3]
 aba_admin = abas_principais[3] if admin_disponivel else None
 
 with aba_busca:
+    chamada_turbo = st.columns([3.5, 1])
+    chamada_turbo[0].markdown(
+        """
+        <div class="turbo-callout">
+            <h3>⚡ Nova: Candidatura automática</h3>
+            <p>
+                Defina o cargo, a localização, PCD, quantidade e plataformas.
+                Nós montamos sua fila personalizada.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    rotulo_painel_turbo = (
+        "Fechar painel"
+        if st.session_state.painel_turbo_aberto
+        else "Abrir Candidatura Turbo"
+    )
+    if chamada_turbo[1].button(
+        rotulo_painel_turbo,
+        type="primary",
+        use_container_width=True,
+        key="alternar-painel-turbo",
+    ):
+        st.session_state.painel_turbo_aberto = (
+            not st.session_state.painel_turbo_aberto
+        )
+        st.rerun()
+
+    if st.session_state.painel_turbo_aberto:
+        renderizar_painel_candidatura_turbo()
+        st.divider()
+
     curriculo_usuario = obter_curriculo(st.session_state.usuario["id"])
     dados_busca_curriculo = (curriculo_usuario or {}).get("dados") or {}
     primeiro_cargo_curriculo = next(

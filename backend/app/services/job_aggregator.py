@@ -57,22 +57,37 @@ async def buscar_vagas_agregadas(
     pagina: int = 1,
     max_dias: int | None = None,
     incluir_pcd: bool = False,
+    fontes_selecionadas: set[str] | None = None,
 ):
     cidade_consulta = normalizar_cidade_consulta(cidade, estado)
+    fontes_normalizadas = (
+        {str(fonte).strip().casefold() for fonte in fontes_selecionadas}
+        if fontes_selecionadas is not None
+        else None
+    )
 
-    buscas: list[Awaitable] = [
-        buscar_vagas_adzuna(
-            cargo=cargo,
-            cidade=cidade_consulta,
-            estado=estado,
-            modalidade=modalidade,
-            pagina=pagina,
-            max_dias=max_dias,
-            incluir_pcd=incluir_pcd,
+    def fonte_foi_selecionada(nome: str) -> bool:
+        return (
+            fontes_normalizadas is None
+            or nome.casefold() in fontes_normalizadas
         )
-    ]
 
-    if JOOBLE_ENABLED:
+    buscas: list[Awaitable] = []
+
+    if fonte_foi_selecionada("Adzuna"):
+        buscas.append(
+            buscar_vagas_adzuna(
+                cargo=cargo,
+                cidade=cidade_consulta,
+                estado=estado,
+                modalidade=modalidade,
+                pagina=pagina,
+                max_dias=max_dias,
+                incluir_pcd=incluir_pcd,
+            )
+        )
+
+    if JOOBLE_ENABLED and fonte_foi_selecionada("Jooble"):
         buscas.append(
             buscar_vagas_jooble(
                 cargo=cargo,
@@ -85,7 +100,7 @@ async def buscar_vagas_agregadas(
             )
         )
 
-    if GUPY_ENABLED:
+    if GUPY_ENABLED and fonte_foi_selecionada("Gupy"):
         buscas.append(
             buscar_vagas_gupy(
                 cargo=cargo,
@@ -98,7 +113,11 @@ async def buscar_vagas_agregadas(
             )
         )
 
-    if GREENHOUSE_ENABLED and GREENHOUSE_BOARD_TOKENS:
+    if (
+        GREENHOUSE_ENABLED
+        and GREENHOUSE_BOARD_TOKENS
+        and fonte_foi_selecionada("Greenhouse")
+    ):
         buscas.append(
             buscar_vagas_greenhouse(
                 cargo=cargo,
@@ -112,7 +131,7 @@ async def buscar_vagas_agregadas(
             )
         )
 
-    if JOBICY_ENABLED:
+    if JOBICY_ENABLED and fonte_foi_selecionada("Jobicy"):
         buscas.append(
             buscar_vagas_jobicy(
                 cargo=cargo,
@@ -125,7 +144,7 @@ async def buscar_vagas_agregadas(
             )
         )
 
-    if REMOTIVE_ENABLED:
+    if REMOTIVE_ENABLED and fonte_foi_selecionada("Remotive"):
         buscas.append(
             buscar_vagas_remotive(
                 cargo=cargo,
