@@ -41,6 +41,90 @@ def _agora_utc() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def garantir_schema_campanhas() -> None:
+    """Cria e migra o schema mesmo quando o Streamlit mantém módulos em cache."""
+    conexao = criar_conexao()
+    try:
+        conexao.execute("""
+            CREATE TABLE IF NOT EXISTS campanhas_candidatura (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER NOT NULL,
+                cargo TEXT NOT NULL,
+                cidade TEXT NOT NULL,
+                estado TEXT NOT NULL,
+                modalidade TEXT NOT NULL,
+                incluir_pcd INTEGER NOT NULL DEFAULT 0,
+                plataformas_json TEXT NOT NULL,
+                limite_vagas INTEGER NOT NULL DEFAULT 10,
+                status TEXT NOT NULL DEFAULT 'pronta',
+                total_vagas INTEGER NOT NULL DEFAULT 0,
+                criado_em TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL,
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+                CHECK (status IN ('pronta', 'pausada', 'concluida'))
+            )
+        """)
+        colunas_campanha = {
+            linha["name"]
+            for linha in conexao.execute(
+                "PRAGMA table_info(campanhas_candidatura)"
+            ).fetchall()
+        }
+        if "limite_vagas" not in colunas_campanha:
+            conexao.execute(
+                """
+                ALTER TABLE campanhas_candidatura
+                ADD COLUMN limite_vagas INTEGER NOT NULL DEFAULT 10
+                """
+            )
+
+        conexao.execute("""
+            CREATE INDEX IF NOT EXISTS idx_campanhas_usuario
+            ON campanhas_candidatura(usuario_id, criado_em DESC)
+        """)
+        conexao.execute("""
+            CREATE TABLE IF NOT EXISTS logins_plataforma_campanha (
+                campanha_id INTEGER NOT NULL,
+                plataforma TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'aguardando',
+                confirmado_em TEXT,
+                atualizado_em TEXT NOT NULL,
+                PRIMARY KEY (campanha_id, plataforma),
+                FOREIGN KEY (campanha_id)
+                    REFERENCES campanhas_candidatura(id) ON DELETE CASCADE,
+                CHECK (status IN ('aguardando', 'confirmado'))
+            )
+        """)
+        conexao.execute("""
+            CREATE TABLE IF NOT EXISTS itens_campanha_candidatura (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campanha_id INTEGER NOT NULL,
+                chave_vaga TEXT NOT NULL,
+                fonte TEXT NOT NULL,
+                id_externo TEXT NOT NULL,
+                titulo TEXT NOT NULL,
+                empresa TEXT NOT NULL,
+                local TEXT,
+                modalidade TEXT,
+                url_candidatura TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pendente',
+                criado_em TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL,
+                FOREIGN KEY (campanha_id)
+                    REFERENCES campanhas_candidatura(id) ON DELETE CASCADE,
+                UNIQUE (campanha_id, chave_vaga),
+                CHECK (status IN ('pendente', 'candidatado', 'ignorado'))
+            )
+        """)
+        conexao.execute("""
+            CREATE INDEX IF NOT EXISTS idx_itens_campanha_status
+            ON itens_campanha_candidatura(campanha_id, status)
+        """)
+        conexao.commit()
+    finally:
+        conexao.close()
+
+
 def fontes_disponiveis_candidatura() -> list[str]:
     fontes = ["Adzuna"]
     if JOOBLE_ENABLED:
@@ -110,6 +194,7 @@ def _selecionar_vagas_diversificadas(
 
 
 def _validar_usuario_ativo(usuario_id: int) -> bool:
+    garantir_schema_campanhas()
     conexao = criar_conexao()
     try:
         registro = conexao.execute(
@@ -170,7 +255,9 @@ def salvar_campanha_candidatura(
         plataforma_exige_login_central(item)
         for item in plataformas_validas
     )
-    status_campanha = "aguardando_login" if aguardando_login else "pronta"
+    # "pausada" mantém compatibilidade com bancos criados pela primeira versão.
+    # A listagem converte esse estado para "aguardando_login" quando necessário.
+    status_campanha = "pausada" if aguardando_login else "pronta"
 
     conexao = criar_conexao()
     try:
@@ -309,6 +396,7 @@ def listar_campanhas_candidatura(
     usuario_id: int,
     limite: int = 10,
 ) -> dict[str, Any]:
+    garantir_schema_campanhas()
     limite_seguro = max(1, min(30, int(limite or 10)))
     conexao = criar_conexao()
     try:
@@ -321,7 +409,13 @@ def listar_campanhas_candidatura(
                 SUM(CASE WHEN i.status = 'candidatado' THEN 1 ELSE 0 END)
                     AS candidatadas,
                 SUM(CASE WHEN i.status = 'ignorado' THEN 1 ELSE 0 END)
-                    AS ignoradas
+                    AS ignoradas,
+                (
+                    SELECT COUNT(*)
+                    FROM logins_plataforma_campanha AS l
+                    WHERE l.campanha_id = c.id
+                      AND l.status = 'aguardando'
+                ) AS logins_pendentes
             FROM campanhas_candidatura AS c
             LEFT JOIN itens_campanha_candidatura AS i
                 ON i.campanha_id = c.id
@@ -338,6 +432,9 @@ def listar_campanhas_candidatura(
             item["plataformas"] = json.loads(item.pop("plataformas_json"))
             for chave in ("pendentes", "candidatadas", "ignoradas"):
                 item[chave] = int(item[chave] or 0)
+            item["logins_pendentes"] = int(item["logins_pendentes"] or 0)
+            if item["logins_pendentes"]:
+                item["status"] = "aguardando_login"
             campanhas.append(item)
         return {"status": "sucesso", "campanhas": campanhas}
     finally:
@@ -348,6 +445,7 @@ def listar_logins_campanha(
     usuario_id: int,
     campanha_id: int,
 ) -> list[dict[str, Any]]:
+    garantir_schema_campanhas()
     conexao = criar_conexao()
     try:
         registros = conexao.execute(
@@ -370,6 +468,7 @@ def confirmar_login_plataforma(
     campanha_id: int,
     plataforma: str,
 ) -> dict[str, Any]:
+    garantir_schema_campanhas()
     plataforma_limpa = str(plataforma or "").strip()
     agora = _agora_utc()
     conexao = criar_conexao()
@@ -423,6 +522,7 @@ def listar_itens_campanha(
     usuario_id: int,
     campanha_id: int,
 ) -> dict[str, Any]:
+    garantir_schema_campanhas()
     conexao = criar_conexao()
     try:
         campanha = conexao.execute(
@@ -469,6 +569,7 @@ def atualizar_item_campanha(
     item_id: int,
     novo_status: str,
 ) -> dict[str, Any]:
+    garantir_schema_campanhas()
     if novo_status not in STATUS_ITEM_VALIDOS - {"pendente"}:
         return {"status": "erro", "mensagem": "Status inválido."}
     agora = _agora_utc()

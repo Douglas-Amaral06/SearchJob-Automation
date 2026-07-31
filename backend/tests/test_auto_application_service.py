@@ -149,3 +149,46 @@ def test_limite_e_reduzido_defensivamente_para_cinquenta(banco_campanhas):
     assert resultado["total_vagas"] == 50
     campanha = listar_campanhas_candidatura(1)["campanhas"][0]
     assert campanha["limite_vagas"] == 50
+
+
+def test_listagem_migra_tabela_antiga_sem_limite_vagas(banco_campanhas):
+    conexao = criar_conexao()
+    try:
+        conexao.execute("DROP TABLE itens_campanha_candidatura")
+        conexao.execute("DROP TABLE logins_plataforma_campanha")
+        conexao.execute("DROP TABLE campanhas_candidatura")
+        conexao.execute("""
+            CREATE TABLE campanhas_candidatura (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER NOT NULL,
+                cargo TEXT NOT NULL,
+                cidade TEXT NOT NULL,
+                estado TEXT NOT NULL,
+                modalidade TEXT NOT NULL,
+                incluir_pcd INTEGER NOT NULL DEFAULT 0,
+                plataformas_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pronta',
+                total_vagas INTEGER NOT NULL DEFAULT 0,
+                criado_em TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL,
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+            )
+        """)
+        conexao.commit()
+    finally:
+        conexao.close()
+
+    resultado = listar_campanhas_candidatura(1)
+
+    assert resultado == {"status": "sucesso", "campanhas": []}
+    conexao = criar_conexao()
+    try:
+        colunas = {
+            item["name"]
+            for item in conexao.execute(
+                "PRAGMA table_info(campanhas_candidatura)"
+            ).fetchall()
+        }
+    finally:
+        conexao.close()
+    assert "limite_vagas" in colunas

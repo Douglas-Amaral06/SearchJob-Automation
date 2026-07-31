@@ -479,11 +479,71 @@ st.markdown(
         [data-testid="stCaptionContainer"] p {
             color: #658294;
         }
-        [data-testid="stExpander"],
-        [data-testid="stDialog"] [role="dialog"] {
+        [data-testid="stExpander"] {
             border-color: #c9e8f1;
             border-radius: 1rem;
             background: rgba(255, 255, 255, .94);
+        }
+        [data-testid="stDialog"] [role="dialog"] {
+            color: #e6faff;
+            border: 1px solid rgba(103, 232, 249, .62);
+            border-radius: 1.35rem;
+            background:
+                radial-gradient(circle at 95% 4%, rgba(34, 211, 238, .22), transparent 18rem),
+                linear-gradient(145deg, #082f49 0%, #0c4a6e 55%, #083344 100%);
+            box-shadow:
+                0 0 36px rgba(34, 211, 238, .22),
+                0 28px 80px rgba(2, 20, 32, .42);
+        }
+        [data-testid="stDialog"] h1,
+        [data-testid="stDialog"] h2,
+        [data-testid="stDialog"] h3,
+        [data-testid="stDialog"] h4 {
+            color: #ecfeff;
+        }
+        [data-testid="stDialog"] .turbo-callout {
+            color: #dffbff;
+            background:
+                radial-gradient(circle at 96% 10%, rgba(103, 232, 249, .2), transparent 11rem),
+                linear-gradient(125deg, rgba(8, 47, 73, .92), rgba(14, 116, 144, .72));
+            border-color: rgba(103, 232, 249, .5);
+            box-shadow: 0 12px 30px rgba(2, 20, 32, .22);
+        }
+        [data-testid="stDialog"] .turbo-callout h3 {
+            color: #ecfeff !important;
+        }
+        [data-testid="stDialog"] .turbo-callout p {
+            color: #c9f4fb !important;
+        }
+        [data-testid="stDialog"] [data-testid="stCaptionContainer"] p,
+        [data-testid="stDialog"] > div p {
+            color: #c9edf6;
+        }
+        [data-testid="stDialog"] div[data-testid="stForm"] {
+            background: linear-gradient(145deg, #f7fdff, #e7f8fd);
+            border-color: rgba(103, 232, 249, .56);
+        }
+        [data-testid="stDialog"] div[data-testid="stForm"] label,
+        [data-testid="stDialog"] div[data-testid="stForm"]
+            [data-testid="stWidgetLabel"] p,
+        [data-testid="stDialog"] div[data-testid="stForm"]
+            [data-testid="stCheckbox"] p {
+            color: #294b60 !important;
+        }
+        [data-testid="stDialog"] [data-testid="stMetric"] {
+            color: #dffbff;
+            background: rgba(8, 47, 73, .76);
+            border-color: rgba(103, 232, 249, .45);
+        }
+        [data-testid="stDialog"] [data-testid="stMetric"] p,
+        [data-testid="stDialog"] [data-testid="stMetricValue"] {
+            color: #dffbff !important;
+        }
+        [data-testid="stDialog"] [data-testid="stDataFrame"] {
+            overflow: hidden;
+            border: 1px solid rgba(103, 232, 249, .42);
+            border-radius: .9rem;
+            background: #f5fcff;
         }
         hr {
             border-color: #d9edf3 !important;
@@ -1511,6 +1571,14 @@ def _rotulo_status_campanha(status: str) -> str:
     }.get(status, "Em preparação")
 
 
+def _atualizar_dialog_turbo() -> None:
+    try:
+        st.rerun(scope="fragment")
+    except (TypeError, ValueError):
+        st.rerun()
+
+
+@st.dialog("Candidatura automática", width="large")
 def renderizar_painel_candidatura_turbo() -> None:
     usuario_id = st.session_state.usuario["id"]
     plataformas_disponiveis = fontes_disponiveis_candidatura()
@@ -1650,7 +1718,7 @@ def renderizar_painel_candidatura_turbo() -> None:
                         "A campanha foi salva, mas nenhuma vaga compatível foi "
                         "encontrada nesta busca."
                     )
-                st.rerun()
+                _atualizar_dialog_turbo()
             else:
                 st.error(resultado_campanha.get("mensagem"))
 
@@ -1659,6 +1727,27 @@ def renderizar_painel_candidatura_turbo() -> None:
     if not campanhas:
         st.info("Você ainda não criou nenhuma campanha de candidatura.")
         return
+
+    st.markdown("#### Visão geral das campanhas")
+    tabela_campanhas = [
+        {
+            "Campanha": f"#{item['id']}",
+            "Cargo": item["cargo"],
+            "Local": f"{item['cidade']}/{item['estado']}",
+            "Plataformas": ", ".join(item["plataformas"]),
+            "Status": _rotulo_status_campanha(item["status"]),
+            "Limite": item["limite_vagas"],
+            "Enviadas": item["candidatadas"],
+            "Pendentes": item["pendentes"],
+        }
+        for item in campanhas
+    ]
+    st.dataframe(
+        tabela_campanhas,
+        hide_index=True,
+        use_container_width=True,
+        height=min(360, 38 + len(tabela_campanhas) * 36),
+    )
 
     campanhas_por_id = {item["id"]: item for item in campanhas}
     campanha_padrao = st.session_state.get("campanha_turbo_ativa")
@@ -1733,7 +1822,7 @@ def renderizar_painel_candidatura_turbo() -> None:
                 )
                 if confirmacao.get("status") == "sucesso":
                     st.success(confirmacao["mensagem"])
-                    st.rerun()
+                    _atualizar_dialog_turbo()
                 st.error(confirmacao.get("mensagem"))
             login_colunas[2].caption(
                 "Faça o login no mesmo navegador e volte para liberar a fila. "
@@ -1808,7 +1897,7 @@ def renderizar_painel_candidatura_turbo() -> None:
                                 item["id"],
                                 "candidatado",
                             )
-                            st.rerun()
+                            _atualizar_dialog_turbo()
                         st.error(persistencia.get("mensagem"))
                     if st.button(
                         "Ignorar vaga",
@@ -1820,7 +1909,7 @@ def renderizar_painel_candidatura_turbo() -> None:
                             item["id"],
                             "ignorado",
                         )
-                        st.rerun()
+                        _atualizar_dialog_turbo()
                 elif item["status"] == "candidatado":
                     st.success("Candidatura enviada")
                 elif item["status"] == "ignorado":
@@ -1834,7 +1923,7 @@ def renderizar_painel_candidatura_turbo() -> None:
         use_container_width=True,
     ):
         st.session_state.pagina_turbo = pagina_atual - 1
-        st.rerun()
+        _atualizar_dialog_turbo()
     navegacao_turbo[1].markdown(
         f"<p style='text-align:center;padding-top:.55rem'>"
         f"Página {pagina_atual} de {total_paginas}</p>",
@@ -1847,7 +1936,7 @@ def renderizar_painel_candidatura_turbo() -> None:
         use_container_width=True,
     ):
         st.session_state.pagina_turbo = pagina_atual + 1
-        st.rerun()
+        _atualizar_dialog_turbo()
 
 
 def renderizar_vaga(vaga: dict[str, Any], contexto: str = "busca") -> None:
@@ -1931,7 +2020,6 @@ def inicializar_estado() -> None:
         "pagina_historico": 1,
         "pagina_admin": 1,
         "pagina_turbo": 1,
-        "painel_turbo_aberto": False,
         "campanha_turbo_ativa": None,
         "erro_busca": "",
         "busca_por_curriculo": False,
@@ -2022,25 +2110,13 @@ with aba_busca:
         """,
         unsafe_allow_html=True,
     )
-    rotulo_painel_turbo = (
-        "Fechar painel"
-        if st.session_state.painel_turbo_aberto
-        else "Abrir Candidatura Turbo"
-    )
     if chamada_turbo[1].button(
-        rotulo_painel_turbo,
+        "Abrir Candidatura Turbo",
         type="primary",
         use_container_width=True,
-        key="alternar-painel-turbo",
+        key="abrir-painel-turbo",
     ):
-        st.session_state.painel_turbo_aberto = (
-            not st.session_state.painel_turbo_aberto
-        )
-        st.rerun()
-
-    if st.session_state.painel_turbo_aberto:
         renderizar_painel_candidatura_turbo()
-        st.divider()
 
     curriculo_usuario = obter_curriculo(st.session_state.usuario["id"])
     dados_busca_curriculo = (curriculo_usuario or {}).get("dados") or {}
